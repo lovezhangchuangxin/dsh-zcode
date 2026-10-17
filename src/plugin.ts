@@ -17,6 +17,7 @@ import { Config, type Config as ConfigType } from './config.ts'
 import { isGrantRecord, type ZcodeGrant } from './types.ts'
 import { resolveModels } from './models.ts'
 import { runZcodeLogin } from './zcode-oauth.ts'
+import { registerZcodeWebUi } from './webui.ts'
 
 export const name = 'dsh-zcode'
 export const inject = ['llm']
@@ -24,6 +25,16 @@ export { Config }
 
 const PROVIDER = 'zcode-glm'
 const CREDENTIAL_KEY: CredentialKey = credentialKey(name, 'zcode-glm')
+/** The pre-`/v1` default; a profile that stored it would 404 every request. */
+const LEGACY_BASE_URL = /^https:\/\/open\.bigmodel\.cn\/api\/anthropic\/?$/
+
+/** Normalize a configured baseURL, migrating the legacy default onto `/v1`. */
+function resolveBaseURL(ctx: Context, configured: string): string {
+  const trimmed = configured.trim()
+  if (!LEGACY_BASE_URL.test(trimmed)) return configured
+  ctx.logger.warn('dsh-zcode: baseURL %s predates the /v1 endpoint; using %s/v1', trimmed, trimmed.replace(/\/+$/, ''))
+  return `${trimmed.replace(/\/+$/, '')}/v1`
+}
 
 export function apply(ctx: Context, config: ConfigType): void {
   const readGrant = async (): Promise<ZcodeGrant | undefined> => {
@@ -48,7 +59,7 @@ export function apply(ctx: Context, config: ConfigType): void {
   const adapter = new ZcodeGlmAdapter({
     provider: PROVIDER,
     providerName: 'ZCode GLM',
-    baseURL: config.baseURL,
+    baseURL: resolveBaseURL(ctx, config.baseURL),
     models: resolveModels(config.models),
     ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
     defaultMaxTokens: config.defaultMaxTokens,
@@ -82,6 +93,11 @@ export function apply(ctx: Context, config: ConfigType): void {
       },
     })
   })
+
+  // The harness ships no generic surface listing authorization flows, so the
+  // plugin brings its own: loopback routes on the host web server plus a
+  // Settings page in the browser half (lib/client.js).
+  registerZcodeWebUi(ctx, { key: CREDENTIAL_KEY, readGrant })
 
   ctx.logger.info('dsh-zcode: provider "%s" registered (%d models)', PROVIDER, adapter.modelCount())
 }

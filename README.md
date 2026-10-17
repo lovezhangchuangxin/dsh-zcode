@@ -8,7 +8,7 @@
 
 1. **登录**：`zcode.z.ai` 的 CLI 轮询式 OAuth（`/api/v1/oauth/cli/init` → 浏览器授权 → `/api/v1/oauth/cli/poll/{flow_id}`），拿到 BigModel 业务 access token，存入 dsh 凭据库（`grant` 记录）。
 2. **换证**：每次请求前，用登录 token 走 BigModel 管理接口三步链：`getCustomerInfo` 定位默认机构/项目 → 查找/创建 `zcode-api-key` → 以 `clientType: "zcode"` 签发**短期项目令牌（PAT）**。内存缓存，到期前 ~2 分钟自动续签，401 时按指纹废弃重签。
-3. **推理**：`POST https://open.bigmodel.cn/api/anthropic/messages`（Anthropic Messages 协议，SSE 流式），携带 PAT（`x-api-key` + `Authorization`）与官方客户端来源头（`User-Agent: ZCode/<version>`、`X-ZCode-App-Version`、`X-Device-Mid`、`X-Title` 等）。
+3. **推理**：`POST https://open.bigmodel.cn/api/anthropic/v1/messages`（Anthropic Messages 协议，SSE 流式），携带 PAT（`x-api-key` + `Authorization`）与官方客户端来源头（`User-Agent: ZCode/<version>`、`X-ZCode-App-Version`、`X-Device-Mid`、`X-Title` 等）。
 
 服务端的 Coding Plan 计量与客户端加成以 PAT 的签发上下文（`clientType: "zcode"`、`usageScene: "CODING_PLAN"`）为主要识别载体，因此本插件发出的请求在服务端视角与官方客户端等价。
 
@@ -43,16 +43,20 @@ pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
   name: dsh-zcode
 ```
 
+### 登录 UI（插件自带 web 客户端半体）
+
+dsh 宿主没有通用的「列出所有 authorization flow」界面（内置账号页只接 DeepSeek 平台流程），因此插件自带 UI：宿主侧在 host web server 上挂 4 条仅限回环地址的插件路由（`/plugins/dsh-zcode/status|signin|cancel|signout`，写操作需状态文档下发的进程内 control key），浏览器侧是一个 `d.client` 模块（`lib/client.js`，ModuleLoader 封套），在 Settings 面板注册 **ZCode (BigModel)** 设置页。两侧共享 `src/webui-protocol.ts` 的线上契约。
+
 ## 使用
 
-1. **登录**：设置 → 账号/Sign-in 页面找到 **ZCode (BigModel)** → Sign in with BigModel。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）。
+1. **登录**：Settings → **ZCode (BigModel)** → 「使用 BigModel 账号登录」。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）；页面会轮询状态直到登录成功。
 2. **选模型**：Settings → Models 里出现 **ZCode GLM (Coding Plan)** 路由（无需 API key）。模型选择器中选择 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo`。
 
 ## 配置（cordis.patch.yml 的 `config:` 段）
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
-| `baseURL` | `https://open.bigmodel.cn/api/anthropic` | 推理端点 |
+| `baseURL` | `https://open.bigmodel.cn/api/anthropic/v1` | 推理端点（Anthropic 惯例：base 含 `/v1`，adapter 追加 `/messages`） |
 | `appVersion` | `3.15.1` | 来源头与 PAT 签发上报的客户端版本 |
 | `deviceMid` | 空（省略该头） | 稳定设备号；建议配置一个固定 UUID |
 | `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo | 模型目录（id/name/contextWindow/maxTokens/thinking） |

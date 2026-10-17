@@ -1,0 +1,54 @@
+/**
+ * Locale dictionaries for the ZCode settings page: flat keys, zh + en, the
+ * two shapes the locale service accepts.
+ *
+ * @module dsh-zcode/client/locales
+ */
+
+export const zh = {
+  nav: 'ZCode (BigModel)',
+  title: 'ZCode (BigModel)',
+  intro: '使用智谱 ZCode 账号登录，把你的 GLM Coding Plan 接入 dsh。登录会在浏览器打开 bigmodel.cn 授权页，确认后自动完成。',
+  signIn: '使用 BigModel 账号登录',
+  signingIn: '等待浏览器授权…',
+  needAction: '请在打开的授权页面中确认登录。',
+  openPage: '打开授权页面',
+  copyLink: '复制授权链接',
+  copied: '已复制',
+  copyFailed: '复制失败',
+  cancel: '取消登录',
+  retry: '重试',
+  cancelled: '登录已取消。',
+  failed: '登录失败。',
+  signOut: '退出登录',
+  signedInAs: '已登录',
+  userId: '用户 ID',
+  signedAt: '登录时间',
+  loadFailed: '无法读取登录状态。',
+  actionFailed: '操作失败，请重试。',
+  reload: '重新加载',
+} as const
+
+export const en = {
+  nav: 'ZCode (BigModel)',
+  title: 'ZCode (BigModel)',
+  intro: 'Sign in with your Zhipu ZCode account to bring your GLM Coding Plan into dsh. Signing in opens the bigmodel.cn consent page in your browser and completes on its own once you confirm.',
+  signIn: 'Sign in with BigModel',
+  signingIn: 'Waiting for browser authorization…',
+  needAction: 'Confirm the sign-in on the authorization page that opened.',
+  openPage: 'Open authorization page',
+  copyLink: 'Copy authorization link',
+  copied: 'Copied',
+  copyFailed: 'Copy failed',
+  cancel: 'Cancel sign-in',
+  retry: 'Retry',
+  cancelled: 'Sign-in cancelled.',
+  failed: 'Sign-in failed.',
+  signOut: 'Sign out',
+  signedInAs: 'Signed in',
+  userId: 'User ID',
+  signedAt: 'Signed in at',
+  loadFailed: 'Could not read the sign-in state.',
+  actionFailed: 'Action failed; try again.',
+  reload: 'Reload',
+} as const

@@ -6,6 +6,7 @@
   "main": "lib/boot.js",
   "exports": {
     ".": "./lib/boot.js",
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -27,10 +28,17 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-locale"
+      ]
     }
   },
   "scripts": {
-    "build": "esbuild src/boot.ts src/plugin.ts --bundle --splitting --platform=node --format=esm --outdir=lib --entry-names=[name] --external:@deepseek-ai/* --sourcemap",
+    "build": "esbuild src/boot.ts src/plugin.ts --bundle --splitting --platform=node --format=esm --outdir=lib --entry-names=[name] --external:@deepseek-ai/* --sourcemap && node scripts/build-client.mjs",
     "typecheck": "tsc --noEmit --pretty false > /tmp/dsh-zcode-tsc.log 2>&1; awk '/^src\\//{p=1} /(^\\.\\.\\/|^node_modules\\/)/{p=0} p' /tmp/dsh-zcode-tsc.log; test $(grep -c '^src/' /tmp/dsh-zcode-tsc.log) -eq 0"
   },
   "peerDependencies": {
@@ -38,14 +46,17 @@
     "@deepseek-ai/dsh-authorization": "*",
     "@deepseek-ai/dsh-credentials": "*",
     "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/schemastery": "*",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.4",
     "@standard-schema/spec": "^1.1.0",
     "@types/node": "^22.19.0",
+    "@types/react": "~18.3.31",
     "esbuild": "^0.25.0",
     "eventsource-parser": "^4.1.2",
+    "react": "^18.3.1",
     "typescript": "^5.9.3",
     "zod": "^4.6.7"
   }
