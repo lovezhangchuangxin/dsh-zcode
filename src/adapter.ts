@@ -30,6 +30,12 @@ export interface ZcodeAdapterOptions {
   loadGrant: () => Promise<{ accessToken: string; userId: string } | undefined>
   /** Client identity headers mirroring the official ZCode app. */
   sourceHeaders: Record<string, string>
+  /**
+   * Device id for the `X-Device-Mid` header, resolved once per request;
+   * undefined omits the header (matches the official client only in that a
+   * store-less host cannot persist one).
+   */
+  resolveDeviceMid?: () => Promise<string | undefined>
   /** Client version reported at PAT issuance. */
   clientVersion: string
 }
@@ -133,21 +139,23 @@ export class ZcodeGlmAdapter extends LlmAdapter {
 
     let response: Response
     try {
+      const deviceMid = await this.options.resolveDeviceMid?.()
       response = await fetch(`${this.options.baseURL.replace(/\/+$/, '')}/messages`, {
-      method: 'POST',
-      signal: options.signal,
-      body: JSON.stringify(body),
-      redirect: 'error',
-      headers: {
-        'content-type': 'application/json',
-        'accept': 'text/event-stream',
-        'anthropic-version': '2023-06-01',
-        // Both spellings are accepted by the GLM gateway; the source headers
-        // (including User-Agent) mirror the official ZCode client.
-        'x-api-key': material.token,
-        'Authorization': `Bearer ${material.token}`,
-        ...this.options.sourceHeaders,
-      },
+        method: 'POST',
+        signal: options.signal,
+        body: JSON.stringify(body),
+        redirect: 'error',
+        headers: {
+          'content-type': 'application/json',
+          'accept': 'text/event-stream',
+          'anthropic-version': '2023-06-01',
+          // Both spellings are accepted by the GLM gateway; the source headers
+          // (including User-Agent) mirror the official ZCode client.
+          'x-api-key': material.token,
+          'Authorization': `Bearer ${material.token}`,
+          ...(deviceMid === undefined ? {} : { 'X-Device-Mid': deviceMid }),
+          ...this.options.sourceHeaders,
+        },
       })
     } catch (error) {
       if (options.signal?.aborted) throw new LlmError('zcode-glm: request aborted', 'ABORTED', { cause: error })

@@ -6,7 +6,7 @@ export interface Config {
   baseURL: string
   /** App version reported in source headers and at PAT issuance. */
   appVersion: string
-  /** Stable device identity; regenerated per profile when left empty. */
+  /** Stable device identity; auto-generated and persisted when left empty. */
   deviceMid: string
   models: unknown
   defaultEffort: string

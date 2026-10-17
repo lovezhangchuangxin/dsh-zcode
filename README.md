@@ -58,7 +58,7 @@ dsh 宿主没有通用的「列出所有 authorization flow」界面（内置账
 | --- | --- | --- |
 | `baseURL` | `https://open.bigmodel.cn/api/anthropic/v1` | 推理端点（Anthropic 惯例：base 含 `/v1`，adapter 追加 `/messages`） |
 | `appVersion` | `3.15.1` | 来源头与 PAT 签发上报的客户端版本 |
-| `deviceMid` | 空（省略该头） | 稳定设备号；建议配置一个固定 UUID |
+| `deviceMid` | 空（自动生成） | 稳定设备号。留空时插件在首次启动生成一个 UUID 并持久化到 dsh 凭据库（`dsh-zcode/device` 记录，跨重启、跨登出保持，等价于官方客户端安装时生成的设备号）；配置显式值时优先生效 |
 | `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo | 模型目录（id/name/contextWindow/maxTokens/thinking） |
 | `defaultEffort` | `high` | 思考强度：off / minimal / low / medium / high |
 | `defaultMaxTokens` | `131072` | 默认输出上限 |

@@ -18,6 +18,7 @@ import { isGrantRecord, type ZcodeGrant } from './types.ts'
 import { resolveModels } from './models.ts'
 import { runZcodeLogin } from './zcode-oauth.ts'
 import { registerZcodeWebUi } from './webui.ts'
+import { createDeviceMidResolver, type DeviceIdStore } from './device-id.ts'
 
 export const name = 'dsh-zcode'
 export const inject = ['llm']
@@ -56,6 +57,14 @@ export function apply(ctx: Context, config: ConfigType): void {
     },
   ])
 
+  // Device identity mirrors the official client's install-time UUID: generated
+  // on first use, persisted in the credential store, stable across restarts
+  // and sign-outs. An explicit config value always wins.
+  const resolveDeviceMid = createDeviceMidResolver({
+    configured: config.deviceMid,
+    getStore: () => ctx.get('credentials') as DeviceIdStore | undefined,
+  })
+
   const adapter = new ZcodeGlmAdapter({
     provider: PROVIDER,
     providerName: 'ZCode GLM',
@@ -68,8 +77,8 @@ export function apply(ctx: Context, config: ConfigType): void {
     sourceHeaders: buildZcodeSourceHeaders({
       appVersion: config.appVersion,
       releaseChannel: 'production',
-      ...(config.deviceMid ? { deviceMid: config.deviceMid } : {}),
     }),
+    resolveDeviceMid,
     clientVersion: config.appVersion,
   })
   ctx.llm.registerAdapter([PROVIDER], adapter)
@@ -92,6 +101,10 @@ export function apply(ctx: Context, config: ConfigType): void {
         })
       },
     })
+    // Create the device record at boot — the equivalent moment to the
+    // official client's install-time generation — so the first inference
+    // request already carries a stable X-Device-Mid.
+    void resolveDeviceMid()
   })
 
   // The harness ships no generic surface listing authorization flows, so the
