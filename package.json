@@ -15,6 +15,7 @@
     "cordis.patch.yml"
   ],
   "license": "MIT",
+  "author": "lovekeqing",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
