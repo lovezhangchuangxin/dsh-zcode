@@ -166,6 +166,9 @@ export async function* translate(
       if (event.usage !== undefined) updateUsage(usage, event.usage)
     } else {
       if (reason === undefined) reason = { kind: 'stop' }
+      if (blocks.size === 0 && reason.kind === 'stop') {
+        throw new LlmError('zcode-glm: Messages returned no content', 'EMPTY_RESPONSE')
+      }
       if (reason.kind !== 'max-tokens') {
         for (const { content } of blocks.values()) {
           if (content.type !== 'tool-call') continue

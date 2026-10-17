@@ -4,7 +4,6 @@
   "description": "Use the Zhipu GLM Coding Plan in DeepSeek Harness: ZCode account sign-in, short-lived project tokens, and an Anthropic Messages adapter.",
   "type": "module",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
   "exports": {
     ".": "./lib/index.js",
     "./cordis.patch.yml": "./cordis.patch.yml",

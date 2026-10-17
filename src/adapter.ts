@@ -11,6 +11,7 @@
 import { LlmAdapter, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, Message, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { BigModelPatClient, fingerprintOf } from './bigmodel-pat.ts'
+import { PatError } from './types.ts'
 import { GLM_REASONING_EFFORTS, type GlmModelEntry } from './models.ts'
 import { serialize, type ReplaySignatures } from './serialize.ts'
 import { parseSse } from './sse.ts'
@@ -97,15 +98,29 @@ export class ZcodeGlmAdapter extends LlmAdapter {
         'MISSING_CREDENTIAL',
       )
     }
-    const material = await this.pat.resolve({
-      loginToken: grant.accessToken,
-      accountId: grant.userId,
-      clientVersion: this.options.clientVersion,
-      signal: options.signal,
-    })
+    let material
+    try {
+      material = await this.pat.resolve({
+        loginToken: grant.accessToken,
+        accountId: grant.userId,
+        clientVersion: this.options.clientVersion,
+        signal: options.signal,
+      })
+    } catch (error) {
+      if (error instanceof PatError) {
+        // Login-scoped failures read as actionable sign-in guidance, not transport noise.
+        throw new LlmError(
+          error.code === 'zcode_not_signed_in'
+            ? 'zcode-glm: not signed in; open Settings to authorize the ZCode (BigModel) account'
+            : `zcode-glm: ZCode credential unavailable (${error.code}); sign in again if this persists`,
+          'MISSING_CREDENTIAL',
+        )
+      }
+      throw error
+    }
     const fingerprint = fingerprintOf(material.token)
 
-    const replayByMessage = collectReplay(options.messages)
+    const replayByMessage = collectReplay(options.messages, options.model)
     const body = serialize(
       options,
       {
@@ -116,7 +131,9 @@ export class ZcodeGlmAdapter extends LlmAdapter {
       replayByMessage,
     )
 
-    const response = await fetch(`${this.options.baseURL.replace(/\/+$/, '')}/messages`, {
+    let response: Response
+    try {
+      response = await fetch(`${this.options.baseURL.replace(/\/+$/, '')}/messages`, {
       method: 'POST',
       signal: options.signal,
       body: JSON.stringify(body),
@@ -131,7 +148,11 @@ export class ZcodeGlmAdapter extends LlmAdapter {
         'Authorization': `Bearer ${material.token}`,
         ...this.options.sourceHeaders,
       },
-    })
+      })
+    } catch (error) {
+      if (options.signal?.aborted) throw new LlmError('zcode-glm: request aborted', 'ABORTED', { cause: error })
+      throw new LlmError('zcode-glm: Messages endpoint unreachable', 'TRANSPORT', { cause: error })
+    }
     if (!response.ok) {
       const text = await response.text()
       if (response.status === 401 || response.status === 403) {
@@ -145,37 +166,56 @@ export class ZcodeGlmAdapter extends LlmAdapter {
       )
     }
     if (response.body === null) throw new LlmError('zcode-glm: no response body', 'EMPTY_RESPONSE')
+
+    // Idle watchdog: one timer rearmed by every SSE frame; on expiry the body
+    // is cancelled, which settles the pending read and surfaces TIMEOUT below.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
+    const pulse = () => {
+      if (timedOut) return
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        timedOut = true
+        void response.body?.cancel().catch(() => {})
+      }, this.options.streamIdleTimeoutMs)
+    }
+    pulse()
     try {
-      let idle = false
-      const watchdog = setTimeout(() => { idle = true }, this.options.streamIdleTimeoutMs)
-      const heartbeat = () => { idle = false }
-      try {
-        const iterator = translate(parseSse(response.body, heartbeat), options.model)
-        while (true) {
-          const next = await iterator.next()
-          if (next.done) return
-          if (idle) throw new LlmError('zcode-glm: Messages stream idle timeout', 'TIMEOUT')
-          yield next.value
-        }
-      } finally {
-        clearTimeout(watchdog)
+      for await (const chunk of translate(parseSse(response.body, pulse), options.model)) {
+        if (timedOut) break
+        yield chunk
       }
+      if (timedOut) throw new LlmError('zcode-glm: Messages stream idle timeout', 'TIMEOUT')
     } catch (error) {
       if (options.signal?.aborted) throw new LlmError('zcode-glm: request aborted', 'ABORTED', { cause: error })
+      if (timedOut) throw new LlmError('zcode-glm: Messages stream idle timeout', 'TIMEOUT')
       if (error instanceof LlmError) throw error
       throw new LlmError('zcode-glm: Messages transport failed', 'TRANSPORT', { cause: error })
+    } finally {
+      clearTimeout(timer)
     }
   }
 }
 
-/** Recover replay signatures indexed by assistant message identity. */
-function collectReplay(messages: readonly { role: string }[]): Map<Message, ReplaySignatures> {
+/**
+ * Recover replay signatures indexed by assistant message identity. Thinking
+ * signatures are not portable across models: a history block keeps its
+ * signature only when the stored replay was produced by the model this
+ * request targets (same rule as the reference DeepSeek adapter).
+ */
+function collectReplay(
+  messages: readonly { role: string }[], model: string,
+): Map<Message, ReplaySignatures> {
   const map = new Map<Message, ReplaySignatures>()
   for (const message of messages) {
     if (message.role !== 'assistant') continue
-    const source = (message as unknown as { source?: { replayState?: { blocks?: readonly unknown[] } } }).source
+    const source = (message as unknown as {
+      source?: { model?: string; replayState?: { response?: { model?: string }; blocks?: readonly unknown[] } }
+    }).source
     const blocks = source?.replayState?.blocks
     if (!Array.isArray(blocks)) continue
+    const replayModel = source?.replayState?.response?.model ?? source?.model
+    if (replayModel !== undefined && replayModel !== model) continue
     const signatures = blocks.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
     if (signatures.length > 0) map.set(message as Message, { signatures })
   }

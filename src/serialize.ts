@@ -67,8 +67,10 @@ export function serialize(
 
   for (const message of options.messages) {
     if (message.role === 'developer') {
-      // GLM has no tool-addition beta: project only the note text; tool
-      // declarations always travel complete in the `tools` field.
+      // Defensive only: LlmRuntime strips developer messages for routes that
+      // declare no systemPromptUpdate/toolUpdate capability (this one); if a
+      // developer note ever reaches here anyway, project its text as an
+      // in-history system turn rather than failing the request.
       const text = message.content
         .filter(block => block.type === 'text')
         .map(block => block.text)
@@ -128,6 +130,9 @@ export function serialize(
       for (const result of results) pending.delete(String(result.tool_use_id))
       message.content = [...results, ...rest]
     }
+  }
+  if (pending.size > 0) {
+    throw new LlmError('zcode-glm: history ends with unresolved tool calls', 'INVALID_REQUEST')
   }
 
   const effort = options.reasoningEffort ?? defaults.defaultEffort ?? 'high'

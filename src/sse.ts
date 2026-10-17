@@ -13,6 +13,10 @@ export async function* parseSse(
     transform(chunk, controller) {
       controller.enqueue(decoder.decode(chunk, { stream: true }))
     },
+    flush(controller) {
+      const tail = decoder.decode()
+      if (tail) controller.enqueue(tail)
+    },
   }))
   const events = decoded.pipeThrough(new EventSourceParserStream({ onComment: activity }))
   for await (const frame of events) {

@@ -35,7 +35,7 @@ function readData(envelope: Envelope): unknown {
   return envelope.data
 }
 
-async function requestJson(url: string, init: RequestInit): Promise<Envelope> {
+async function requestJson(url: string, init: RequestInit): Promise<{ envelope: Envelope; status: number }> {
   let response: Response
   try {
     response = await fetch(url, init)
@@ -46,10 +46,12 @@ async function requestJson(url: string, init: RequestInit): Promise<Envelope> {
   try {
     raw = await response.json()
   } catch {
+    // A 401/403 with a non-JSON body still means the login token expired.
+    if (response.status === 401 || response.status === 403) throw new PatError('zcode_login_expired')
     throw new PatError('zcode_invalid_response')
   }
   if (typeof raw !== 'object' || raw === null) throw new PatError('zcode_invalid_response')
-  return raw as Envelope
+  return { envelope: raw as Envelope, status: response.status }
 }
 
 interface KeyLocation {
@@ -62,11 +64,12 @@ async function resolveLocation(
   loginToken: string, signal: AbortSignal | undefined, origin: string,
 ): Promise<KeyLocation> {
   // BigModel business endpoints take the raw token, without a Bearer prefix.
-  const customer = await requestJson(`${origin}/api/biz/customer/getCustomerInfo`, {
+  const { envelope: customer, status } = await requestJson(`${origin}/api/biz/customer/getCustomerInfo`, {
     method: 'GET',
     headers: { Authorization: loginToken, 'Content-Type': 'application/json' },
     signal,
   })
+  if (status === 401 || status === 403) throw new PatError('zcode_login_expired')
   const data = readData(customer)
   const organizations =
     typeof data === 'object' && data !== null && Array.isArray((data as { organizations?: unknown }).organizations)
@@ -92,12 +95,13 @@ async function resolveLocation(
   const organizationId = trimmed(organization.organizationId)!
   const projectId = trimmed(project.projectId)!
   const keyListUrl = `${origin}/api/biz/v1/organization/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/api_keys`
-  const list = await requestJson(keyListUrl, {
+  const { envelope: list } = await requestJson(keyListUrl, {
     method: 'GET',
     headers: { Authorization: loginToken, 'Content-Type': 'application/json' },
     signal,
   })
-  const entries = Array.isArray(readData(list)) ? (readData(list) as Record<string, unknown>[]) : []
+  const listData = readData(list)
+  const entries = Array.isArray(listData) ? (listData as Record<string, unknown>[]) : []
   const candidate = entries.find(
     (entry) => trimmed(entry.name) === ZCODE_API_KEY_NAME && trimmed(entry.apiKey),
   )
@@ -108,7 +112,7 @@ async function resolveLocation(
       apiKeyId: trimmed(candidate.apiKey)!,
     }
   }
-  const created = await requestJson(keyListUrl, {
+  const { envelope: created } = await requestJson(keyListUrl, {
     method: 'POST',
     headers: { Authorization: loginToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: ZCODE_API_KEY_NAME, usageScene: USAGE_SCENE_CODING_PLAN }),
@@ -187,9 +191,11 @@ export class BigModelPatClient {
     }
     const current = entry
     const pending = (async () => {
-      const location = await resolveLocation(loginToken, input.signal, origin)
+      // Reuse the resolved key location across refreshes of one login; a hard
+      // failure clears the whole entry so the next attempt re-locates.
+      const location = current.location ?? await resolveLocation(loginToken, input.signal, origin)
       current.location = location
-      const response = await requestJson(
+      const { envelope: response, status } = await requestJson(
         `${origin}/api/biz/v1/organization/${encodeURIComponent(location.organizationId)}/projects/${encodeURIComponent(location.projectId)}/api_keys/${encodeURIComponent(location.apiKeyId)}/access_tokens`,
         {
           method: 'POST',
@@ -198,6 +204,8 @@ export class BigModelPatClient {
           signal: input.signal,
         },
       )
+      if (status === 404) current.location = undefined
+      if (status === 401 || status === 403) throw new PatError('zcode_login_expired')
       const data = readData(response)
       if (typeof data !== 'object' || data === null) throw new PatError('zcode_invalid_response')
       const fields = data as {
