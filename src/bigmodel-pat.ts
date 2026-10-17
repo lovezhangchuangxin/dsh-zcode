@@ -29,7 +29,9 @@ interface Envelope {
 }
 
 function readData(envelope: Envelope): unknown {
-  if (envelope.code !== undefined && envelope.code !== 0) {
+  // BigModel's business endpoints answer code 200 on success (observed on
+  // every step of the chain); 0 is accepted too in case an endpoint uses it.
+  if (envelope.code !== undefined && envelope.code !== 200 && envelope.code !== 0) {
     throw new PatError('zcode_invalid_response')
   }
   return envelope.data
@@ -210,11 +212,14 @@ export class BigModelPatClient {
       if (typeof data !== 'object' || data === null) throw new PatError('zcode_invalid_response')
       const fields = data as {
         enable?: unknown
+        enabled?: unknown
         accessToken?: unknown
         expiresIn?: unknown
         expiresAt?: unknown
       }
-      if (fields.enable === false) throw new PatError('zcode_token_disabled')
+      // The issuance answer names the flag "enabled"; "enable" is kept for the
+      // same defensive reason as the code-0 arm above.
+      if (fields.enable === false || fields.enabled === false) throw new PatError('zcode_token_disabled')
       const token = trimmed(fields.accessToken)
       const expiresIn = Number(fields.expiresIn)
       const expiresAtSec = Number(fields.expiresAt)
@@ -222,7 +227,11 @@ export class BigModelPatClient {
         throw new PatError('zcode_invalid_response')
       }
       const startedAt = Date.now()
-      const expiresAt = Math.min(expiresAtSec * 1_000, startedAt + expiresIn * 1_000)
+      // An absent expiresAt must not poison the min() with NaN, which would
+      // silently defeat the cache predicate on every later call.
+      const expiresAt = Number.isFinite(expiresAtSec)
+        ? Math.min(expiresAtSec * 1_000, startedAt + expiresIn * 1_000)
+        : startedAt + expiresIn * 1_000
       if (expiresAt <= startedAt) throw new PatError('zcode_invalid_response')
       const value = { token, expiresAt }
       current.value = value

@@ -20,7 +20,7 @@ import { translate } from './translate.ts'
 export interface ZcodeAdapterOptions {
   provider: string
   providerName: string
-  /** Messages endpoint root, e.g. https://open.bigmodel.cn/api/anthropic */
+  /** Messages endpoint root, e.g. https://open.bigmodel.cn/api/anthropic/v1 */
   baseURL: string
   models: readonly GlmModelEntry[]
   defaultEffort?: string

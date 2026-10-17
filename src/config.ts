@@ -15,7 +15,9 @@ export interface Config {
 }
 
 export const Config = z.object({
-  baseURL: z.string().default('https://open.bigmodel.cn/api/anthropic'),
+  // Anthropic-SDK convention: the base ends at /v1 and the adapter appends
+  // /messages. GLM's compatible endpoint is /api/anthropic/v1/messages.
+  baseURL: z.string().default('https://open.bigmodel.cn/api/anthropic/v1'),
   appVersion: z.string().default('3.15.1'),
   deviceMid: z.string().default(''),
   models: z.any().default([...DEFAULT_MODELS]),
