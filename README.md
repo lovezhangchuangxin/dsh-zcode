@@ -12,6 +12,14 @@
 
 服务端的 Coding Plan 计量与客户端加成以 PAT 的签发上下文（`clientType: "zcode"`、`usageScene: "CODING_PLAN"`）为主要识别载体，因此本插件发出的请求在服务端视角与官方客户端等价。
 
+### 宿主模块绑定（为什么有 `lib/boot.js`）
+
+dsh 发布版 CLI 把全部 `@deepseek-ai/*` 包放在 CLI 私有的 `node_modules` 里，不在任何 profile 插件会搜索的解析路径上；而 pnpm 安装本插件时会在插件旁自动装入 npm 上的旧版包。若直接静态导入，插件拿到的会是旧版且与宿主不同实例的类（`instanceof LlmAdapter` / `instanceof LlmError` 等身份校验会失败）。
+
+因此包入口是 `lib/boot.js`：它从 `process.argv[1]` / `process.execPath` 向上定位正在运行的 dsh CLI（识别包名 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-root`），用 `createRequire` 解析宿主自己的 `dsh-llm`、`dsh-credentials`、`dsh-authorization`、`schemastery`，注册一个仅作用于本插件产物的 `module.registerHooks` 解析钩子，再加载真正的插件体 —— 插件内所有宿主符号都与宿主进程是同一模块实例（对 `LlmAdapter` 继承、`LlmError` 抛出、`Config` 校验至关重要）。
+
+特殊环境可用 `DSH_ZCODE_HOST` 环境变量直接指定 CLI 安装目录。要求 Node ≥ 22.15（`registerHooks`）。修改插件代码后需重启 dsh 进程（运行中的进程缓存了模块）。
+
 ## 安装
 
 ```sh

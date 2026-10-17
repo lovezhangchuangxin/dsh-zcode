@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "Use the Zhipu GLM Coding Plan in DeepSeek Harness: ZCode account sign-in, short-lived project tokens, and an Anthropic Messages adapter.",
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/boot.js",
   "exports": {
-    ".": "./lib/index.js",
+    ".": "./lib/boot.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=lib/index.js --external:@deepseek-ai/* --sourcemap",
+    "build": "esbuild src/boot.ts src/plugin.ts --bundle --splitting --platform=node --format=esm --outdir=lib --entry-names=[name] --external:@deepseek-ai/* --sourcemap",
     "typecheck": "tsc --noEmit --pretty false > /tmp/dsh-zcode-tsc.log 2>&1; awk '/^src\\//{p=1} /(^\\.\\.\\/|^node_modules\\/)/{p=0} p' /tmp/dsh-zcode-tsc.log; test $(grep -c '^src/' /tmp/dsh-zcode-tsc.log) -eq 0"
   },
   "peerDependencies": {
