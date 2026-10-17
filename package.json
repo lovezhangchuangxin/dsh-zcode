@@ -1,0 +1,53 @@
+{
+  "name": "dsh-zcode",
+  "version": "0.1.0",
+  "description": "Use the Zhipu GLM Coding Plan in DeepSeek Harness: ZCode account sign-in, short-lived project tokens, and an Anthropic Messages adapter.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "glm",
+    "zcode",
+    "zhipu"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=lib/index.js --external:@deepseek-ai/* --sourcemap",
+    "typecheck": "tsc --noEmit --pretty false > /tmp/dsh-zcode-tsc.log 2>&1; awk '/^src\\//{p=1} /(^\\.\\.\\/|^node_modules\\/)/{p=0} p' /tmp/dsh-zcode-tsc.log; test $(grep -c '^src/' /tmp/dsh-zcode-tsc.log) -eq 0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-authorization": "*",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@standard-schema/spec": "^1.1.0",
+    "@types/node": "^22.19.0",
+    "esbuild": "^0.25.0",
+    "eventsource-parser": "^4.1.2",
+    "typescript": "^5.9.3",
+    "zod": "^4.6.7"
+  }
+}

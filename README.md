@@ -1,0 +1,73 @@
+# dsh-zcode
+
+在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）中使用智谱 **GLM Coding Plan**：通过 ZCode 账号登录，走官方客户端同款链路获取短期项目令牌（PAT），以 Anthropic Messages 协议调用 GLM 模型。
+
+## 工作原理
+
+插件完整复刻了 ZCode 官方客户端的鉴权链路：
+
+1. **登录**：`zcode.z.ai` 的 CLI 轮询式 OAuth（`/api/v1/oauth/cli/init` → 浏览器授权 → `/api/v1/oauth/cli/poll/{flow_id}`），拿到 BigModel 业务 access token，存入 dsh 凭据库（`grant` 记录）。
+2. **换证**：每次请求前，用登录 token 走 BigModel 管理接口三步链：`getCustomerInfo` 定位默认机构/项目 → 查找/创建 `zcode-api-key` → 以 `clientType: "zcode"` 签发**短期项目令牌（PAT）**。内存缓存，到期前 ~2 分钟自动续签，401 时按指纹废弃重签。
+3. **推理**：`POST https://open.bigmodel.cn/api/anthropic/messages`（Anthropic Messages 协议，SSE 流式），携带 PAT（`x-api-key` + `Authorization`）与官方客户端来源头（`User-Agent: ZCode/<version>`、`X-ZCode-App-Version`、`X-Device-Mid`、`X-Title` 等）。
+
+服务端的 Coding Plan 计量与客户端加成以 PAT 的签发上下文（`clientType: "zcode"`、`usageScene: "CODING_PLAN"`）为主要识别载体，因此本插件发出的请求在服务端视角与官方客户端等价。
+
+## 安装
+
+```sh
+cd dsh-zcode
+pnpm install
+pnpm build
+```
+
+### 接入 dsh profile
+
+Web 端 Plugins 页面安装，或直接在 profile 目录执行：
+
+```sh
+pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
+```
+
+然后在 profile 的 `cordis.patch.yml` 中确认条目（安装 bundle 时自动添加）：
+
+```yaml
+- id: dsh-zcode
+  name: dsh-zcode
+```
+
+## 使用
+
+1. **登录**：设置 → 账号/Sign-in 页面找到 **ZCode (BigModel)** → Sign in with BigModel。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）。
+2. **选模型**：Settings → Models 里出现 **ZCode GLM (Coding Plan)** 路由（无需 API key）。模型选择器中选择 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo`。
+
+## 配置（cordis.patch.yml 的 `config:` 段）
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `baseURL` | `https://open.bigmodel.cn/api/anthropic` | 推理端点 |
+| `appVersion` | `3.15.1` | 来源头与 PAT 签发上报的客户端版本 |
+| `deviceMid` | 空（省略该头） | 稳定设备号；建议配置一个固定 UUID |
+| `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo | 模型目录（id/name/contextWindow/maxTokens/thinking） |
+| `defaultEffort` | `high` | 思考强度：off / minimal / low / medium / high |
+| `defaultMaxTokens` | `131072` | 默认输出上限 |
+| `streamIdleTimeoutMs` | `120000` | 流式空闲超时 |
+
+## 已知限制
+
+- **仅文本**：第一版不支持图片附件（图片块会显式报 `UNSUPPORTED_CONTENT`）。
+- **需要源码版（0.2.x）dsh**：npm 上 `0.0.1-rc.1` 的 dsh 运行时缺少凭据记录 API（`readRecord` 等），插件无法在其上工作。
+- **登录态过期后需重新登录**：官方客户端同样未实现 refresh token 刷新（`refreshToken` 已随 grant 保存，预留给未来）。
+- **条款风险**：本插件把你的个人 Coding Plan 订阅接入第三方 harness，使用官方 App 同款接口与你自己的凭据，但可能不符合智谱服务条款；服务端策略变更可能随时导致失效。请自行评估，保持正常使用强度。
+
+## 开发
+
+```sh
+pnpm typecheck   # 只对 src/ 严格把关（vendor 源码差异不计入）
+pnpm build       # esbuild 打包到 lib/index.js
+```
+
+类型检查通过 tsconfig `paths` 直接对齐本机 dsh 源码仓库（`../../sources/deepseek-harness`）；调整 dsh 源码位置时同步修改 `tsconfig.json`。
+
+## License
+
+MIT
