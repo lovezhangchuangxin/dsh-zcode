@@ -22,6 +22,6 @@ export const Config = z.object({
   deviceMid: z.string().default(''),
   models: z.any().default([...DEFAULT_MODELS]),
   defaultEffort: z.string().default('high'),
-  defaultMaxTokens: z.number().default(131_072),
+  defaultMaxTokens: z.number().default(128_000),
   streamIdleTimeoutMs: z.number().default(120_000),
 })

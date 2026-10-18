@@ -74,8 +74,8 @@ pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
 | `appVersion` | `3.15.1` | 来源头与 PAT 签发上报的客户端版本 |
 | `deviceMid` | 空（自动生成） | 稳定设备号。留空时插件首次启动生成 UUID 并持久化到 dsh 凭据库（`dsh-zcode/device` 记录，跨重启、跨登出保持）；配置显式值时优先生效 |
 | `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo | 模型目录（id/name/contextWindow/maxTokens/thinking） |
-| `defaultEffort` | `high` | 思考强度：off / minimal / low / medium / high |
-| `defaultMaxTokens` | `131072` | 默认输出上限 |
+| `defaultEffort` | `high` | 思考强度：off / low / medium / high（以 `output_config.effort` 直传服务端，与官方客户端一致；旧配置里的 `minimal` 会按 `low` 发送） |
+| `defaultMaxTokens` | `128000` | 默认输出上限（与官方客户端一致） |
 | `streamIdleTimeoutMs` | `120000` | 流式空闲超时（毫秒） |
 
 完整示例：

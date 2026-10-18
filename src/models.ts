@@ -8,26 +8,17 @@ export interface GlmModelEntry {
   description?: string
   contextWindow: number
   maxTokens: number
-  /** Whether the model supports the thinking budget toggle. */
+  /** Whether the model supports toggling thinking on and off. */
   thinking: boolean
 }
 
 /** Reasoning efforts in ascending order, per the harness vocabulary. */
 export const GLM_REASONING_EFFORTS: readonly { id: ReturnType<typeof ReasoningEffortId>; name: string }[] = [
   { id: ReasoningEffortId('off'), name: 'Off' },
-  { id: ReasoningEffortId('minimal'), name: 'Minimal' },
   { id: ReasoningEffortId('low'), name: 'Low' },
   { id: ReasoningEffortId('medium'), name: 'Medium' },
   { id: ReasoningEffortId('high'), name: 'High' },
 ]
-
-/** Thinking budget_tokens mapped from a reasoning effort id. */
-export const EFFORT_BUDGETS: Record<string, number> = {
-  minimal: 2_048,
-  low: 4_096,
-  medium: 8_192,
-  high: 16_384,
-}
 
 export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
   {
@@ -35,14 +26,14 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     name: 'GLM-5.3',
     description: 'Flagship GLM reasoning model on the Coding Plan.',
     contextWindow: 1_048_576,
-    maxTokens: 131_072,
+    maxTokens: 128_000,
     thinking: true,
   },
   {
     id: 'GLM-5.2',
     name: 'GLM-5.2',
     contextWindow: 1_048_576,
-    maxTokens: 131_072,
+    maxTokens: 128_000,
     thinking: true,
   },
   {
@@ -50,7 +41,7 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     name: 'GLM-5-Turbo',
     description: 'Fast long-context GLM model.',
     contextWindow: 2_000_000,
-    maxTokens: 131_072,
+    maxTokens: 128_000,
     thinking: true,
   },
 ]
@@ -71,7 +62,7 @@ export function resolveModels(raw: unknown): readonly GlmModelEntry[] {
       name: typeof fields.name === 'string' && fields.name.trim() ? fields.name.trim() : id,
       ...(typeof fields.description === 'string' ? { description: fields.description } : {}),
       contextWindow,
-      maxTokens: Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : 131_072,
+      maxTokens: Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : 128_000,
       thinking: fields.thinking !== false,
     })
   }

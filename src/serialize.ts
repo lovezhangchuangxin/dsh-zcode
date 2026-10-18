@@ -5,7 +5,7 @@
 
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message, RequestMessage } from '@deepseek-ai/dsh-llm'
-import { EFFORT_BUDGETS, type GlmModelEntry } from './models.ts'
+import type { GlmModelEntry } from './models.ts'
 
 export interface WireBlock { type: string; [field: string]: unknown }
 export interface WireMessage { role: 'user' | 'assistant' | 'system'; content: WireBlock[] }
@@ -14,8 +14,24 @@ export interface WireRequest {
   stream: true
   messages: WireMessage[]
   max_tokens: number
-  thinking: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' }
+  thinking: { type: 'enabled' } | { type: 'disabled' }
   [field: string]: unknown
+}
+
+/**
+ * Reasoning effort → official `output_config.effort` value. The official
+ * client sends the level itself on the wire (`thinking:{type:"enabled"}`
+ * without a budget, plus `output_config:{effort:"low"|"medium"|"high"|
+ * "xhigh"|"max"}`), so levels ride on output_config, never on
+ * budget_tokens. dsh's `minimal` has no official slot and lands on `low`.
+ */
+const WIRE_EFFORTS: Record<string, string> = {
+  minimal: 'low',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
 }
 
 /** Signatures recovered from a previous response, keyed by assistant turn + block index. */
@@ -137,15 +153,15 @@ export function serialize(
 
   const effort = options.reasoningEffort ?? defaults.defaultEffort ?? 'high'
   const thinkingOn = model?.thinking !== false && !defaults.thinkingDisabled && effort !== 'off'
+  const wireEffort = WIRE_EFFORTS[effort] ?? 'high'
   const system = [options.system, historySystem].filter(Boolean).join('\n\n')
   return {
     model: options.model,
     stream: true,
     messages,
     max_tokens: options.maxTokens ?? model?.maxTokens ?? defaults.defaultMaxTokens,
-    thinking: thinkingOn
-      ? { type: 'enabled', budget_tokens: EFFORT_BUDGETS[effort] ?? EFFORT_BUDGETS['high']! }
-      : { type: 'disabled' },
+    thinking: thinkingOn ? { type: 'enabled' } : { type: 'disabled' },
+    ...(thinkingOn ? { output_config: { effort: wireEffort } } : {}),
     ...(system.length === 0 ? {} : { system }),
     ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
     ...(options.stop === undefined ? {} : { stop_sequences: options.stop }),
