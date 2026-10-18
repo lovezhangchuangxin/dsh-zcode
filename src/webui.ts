@@ -23,8 +23,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
 import type { ZcodeGrant } from './types.ts'
 import {
-  ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_SIGNIN_PATH, ZCODE_UI_SIGNOUT_PATH,
-  ZCODE_UI_STATUS_PATH, type ZcodeWebAttempt, type ZcodeWebStatus,
+  ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_QUOTA_PATH, ZCODE_UI_SIGNIN_PATH,
+  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc,
+  type ZcodeWebAttempt, type ZcodeWebStatus,
 } from './webui-protocol.ts'
 
 /**
@@ -112,6 +113,8 @@ export interface ZcodeWebUiDeps {
   key: CredentialKey
   /** Current stored grant, or undefined while signed out. */
   readGrant: () => Promise<ZcodeGrant | undefined>
+  /** Coding-plan quota snapshot; `force` bypasses the host-side cache. */
+  readQuota: (force: boolean) => Promise<ZcodeQuotaDoc>
 }
 
 /**
@@ -240,6 +243,25 @@ export function registerZcodeWebUi(ctx: Context, deps: ZcodeWebUiDeps): void {
         json(res, 200, await status())
       }
 
+      /** Read-only route: the quota document; `?refresh=1` bypasses the host cache. */
+      const handleQuota = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          json(res, 405, { error: 'method not allowed' })
+          return
+        }
+        if (!loopbackRequest(req)) {
+          json(res, 403, { error: 'request not trusted' })
+          return
+        }
+        let refresh = false
+        try {
+          refresh = new URL(req.url ?? '/', 'http://dsh.invalid').searchParams.get('refresh') === '1'
+        } catch {
+          /* an unparseable query just serves the cache */
+        }
+        json(res, 200, await deps.readQuota(refresh))
+      }
+
       /** Wrap one handler so an internal failure answers 500 instead of leaving an unhandled rejection. */
       const respond = (handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>) =>
         async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -257,6 +279,7 @@ export function registerZcodeWebUi(ctx: Context, deps: ZcodeWebUiDeps): void {
         webServer.register({ kind: 'exact', path: ZCODE_UI_SIGNIN_PATH, handler: respond(handleSignIn) }),
         webServer.register({ kind: 'exact', path: ZCODE_UI_CANCEL_PATH, handler: respond(handleCancel) }),
         webServer.register({ kind: 'exact', path: ZCODE_UI_SIGNOUT_PATH, handler: respond(handleSignOut) }),
+        webServer.register({ kind: 'exact', path: ZCODE_UI_QUOTA_PATH, handler: respond(handleQuota) }),
       ]
       return () => {
         for (const dispose of disposers) dispose()

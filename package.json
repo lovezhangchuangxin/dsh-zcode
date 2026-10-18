@@ -34,6 +34,7 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-model-selection",
         "@deepseek-ai/dsh-client-locale"
       ]
     }

@@ -10,8 +10,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   isZcodeWebStatus, ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_SIGNIN_PATH,
-  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeWebStatus,
+  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc, type ZcodeWebStatus,
 } from '../webui-protocol.ts'
+import {
+  countdownText, fetchQuota, fiveHourLimit, QUOTA_POLL_MS, resetClockText, tokensLimit, usedPercent,
+} from './quota.ts'
 
 /** Locale translator injected through the registration's locale namespace. */
 type T = (key: string) => string
@@ -53,6 +56,13 @@ const styles = {
     padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
     background: 'transparent', border: '1px solid rgba(128,128,128,.5)',
     color: '#3b82f6', textDecoration: 'none',
+  },
+  quotaBar: { height: 6, borderRadius: 3, background: 'rgba(128,128,128,.3)', overflow: 'hidden' } as const,
+  quotaBarFill: { height: '100%', borderRadius: 3, background: '#3b82f6' } as const,
+  quotaRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, fontSize: 13 } as const,
+  badge: {
+    fontSize: 11, padding: '1px 8px', borderRadius: 999,
+    border: '1px solid rgba(128,128,128,.5)', textTransform: 'uppercase', letterSpacing: '.04em',
   },
   muted: { margin: 0, fontSize: 13, opacity: .75 },
   error: { margin: 0, fontSize: 13, color: '#e5484d', wordBreak: 'break-word' },
@@ -206,6 +216,7 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
               </div>
             </div>
           )}
+      {account !== null ? <QuotaCard t={t} /> : null}
       {failure !== null
         ? (
           <p style={styles.error}>
@@ -216,6 +227,116 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
           </p>
         )
         : null}
+    </div>
+  )
+}
+
+/** The Coding Plan quota card: 5-hour window, token budget, reset times. */
+function QuotaCard({ t }: { t: (key: string) => string }) {
+  const [doc, setDoc] = useState<ZcodeQuotaDoc | undefined>()
+  const [busy, setBusy] = useState(false)
+
+  const refresh = useCallback(async (force: boolean): Promise<void> => {
+    setBusy(true)
+    try {
+      setDoc(await fetchQuota(force))
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh(false)
+    const timer = setInterval(() => { void refresh(false) }, QUOTA_POLL_MS)
+    return () => { clearInterval(timer) }
+  }, [refresh])
+
+  const window5h = doc?.status === 'ok' ? fiveHourLimit(doc) : undefined
+  const tokens = doc?.status === 'ok' ? tokensLimit(doc) : undefined
+
+  if (doc === undefined) {
+    return (
+      <div style={styles.card}>
+        <div style={styles.quotaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
+        <p style={styles.muted}>…</p>
+      </div>
+    )
+  }
+  if (doc.status !== 'ok') {
+    return (
+      <div style={styles.card}>
+        <div style={styles.quotaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
+        <p style={styles.error}>{doc.status === 'error' ? (doc.error ?? t('quotaUnavailable')) : t('quotaUnavailable')}</p>
+      </div>
+    )
+  }
+
+  const windowPercent = window5h !== undefined ? usedPercent(window5h) : undefined
+  const tokensPercent = tokens !== undefined ? usedPercent(tokens) : undefined
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.quotaRow}>
+        <span style={styles.title}>{t('quotaTitle')}</span>
+        <span style={styles.row}>
+          {doc.level === undefined ? null : <span style={styles.badge}>{doc.level}</span>}
+          <button type="button" style={{ ...styles.outline, padding: '2px 10px' }} disabled={busy} onClick={() => { void refresh(true) }}>
+            {busy ? '…' : t('quotaRefresh')}
+          </button>
+        </span>
+      </div>
+
+      {window5h === undefined && tokens === undefined
+        ? <p style={styles.muted}>{t('quotaUnavailable')}</p>
+        : null}
+
+      {window5h === undefined ? null : (
+        <div>
+          <div style={styles.quotaRow}>
+            <span style={styles.muted}>{t('quotaFiveHour')}</span>
+            <span style={styles.muted}>
+              {windowPercent === undefined
+                ? ''
+                : `${t('quotaUsed')} ${windowPercent}% · ${t('quotaRemaining')} ${Math.max(0, 100 - windowPercent)}%`}
+            </span>
+          </div>
+          <div style={styles.quotaBar}>
+            <div style={{ ...styles.quotaBarFill, width: `${windowPercent ?? 0}%` }} />
+          </div>
+          <div style={styles.quotaRow}>
+            <span style={styles.muted}>
+              {window5h.currentValue !== undefined && window5h.usage !== undefined && window5h.usage > 0
+                ? `${window5h.currentValue} / ${window5h.usage}`
+                : ''}
+            </span>
+            <span style={styles.muted}>
+              {window5h.nextResetTime === undefined
+                ? ''
+                : `${t('quotaResetsIn')} ${countdownText(window5h.nextResetTime)} · ${resetClockText(window5h.nextResetTime)}`}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {tokens === undefined ? null : (
+        <div>
+          <div style={styles.quotaRow}>
+            <span style={styles.muted}>{t('quotaTokens')}</span>
+            <span style={styles.muted}>
+              {tokensPercent === undefined ? '' : `${t('quotaUsed')} ${tokensPercent}%`}
+            </span>
+          </div>
+          <div style={styles.quotaBar}>
+            <div style={{ ...styles.quotaBarFill, width: `${tokensPercent ?? 0}%` }} />
+          </div>
+          {tokens.nextResetTime === undefined ? null : (
+            <div style={styles.quotaRow}>
+              <span />
+              <span style={styles.muted}>{t('quotaResetsIn')} {countdownText(tokens.nextResetTime)} · {resetClockText(tokens.nextResetTime)}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -18,10 +18,16 @@ export interface SlotEntryOptions {
   id: string
   /** Nav position among the section list; lower renders earlier. */
   order?: number
-  /** Section label, thunked so a locale switch re-reads it. */
-  label: () => string
+  /** Section label, thunked so a locale switch re-reads it; optional outside settings nav slots. */
+  label?: () => string
   /** Locale namespace whose bound translator is injected as the `t` prop. */
   locale?: string
+  /**
+   * Face builder: the renderer calls it with the slot's owner props (for
+   * conversation-scoped slots, the session id) and spreads the result into
+   * the component's props alongside the owner props.
+   */
+  inject?: (owner: unknown) => object
 }
 
 /** The browser slots registry. */
@@ -60,6 +66,23 @@ export interface ClientLocaleService {
 export interface ClientContext {
   /** cordis effect(): run now, dispose on unload. */
   effect(setup: () => (() => void) | undefined, label?: string): () => void
+  /** cordis inject(): run the callback once every named service is available. */
+  inject(services: readonly string[], callback: (scope: ClientContext) => (() => void) | undefined): () => void
   slots: ClientSlotsService
   locale: ClientLocaleService
+}
+
+/**
+ * The model-directory service (`@deepseek-ai/dsh-client-ui-model-selection`),
+ * restated locally as the slice the quota badge consumes — the same shape the
+ * workbuddy client's proven bottom-bar control reads.
+ */
+export interface ModelDirectoriesService {
+  directoryFor(sessionId: string): { store: DirectoryStoreLike }
+}
+
+/** The per-session current-selection store handed to input-bar slot entries. */
+export interface DirectoryStoreLike {
+  subscribe(listener: () => void): () => void
+  getSnapshot(): { current?: { provider?: string, model?: string } | null }
 }

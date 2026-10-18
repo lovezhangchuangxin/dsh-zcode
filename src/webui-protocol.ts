@@ -12,6 +12,7 @@ export const ZCODE_UI_STATUS_PATH = '/plugins/dsh-zcode/status'
 export const ZCODE_UI_SIGNIN_PATH = '/plugins/dsh-zcode/signin'
 export const ZCODE_UI_CANCEL_PATH = '/plugins/dsh-zcode/cancel'
 export const ZCODE_UI_SIGNOUT_PATH = '/plugins/dsh-zcode/signout'
+export const ZCODE_UI_QUOTA_PATH = '/plugins/dsh-zcode/quota'
 
 /** Header every state-changing route requires; carries the in-process control key. */
 export const ZCODE_UI_CONTROL_HEADER = 'x-dsh-zcode-control'
@@ -45,6 +46,59 @@ export interface ZcodeWebStatus {
 }
 
 const ATTEMPT_PHASES: ReadonlySet<string> = new Set(['running', 'succeeded', 'cancelled', 'failed'])
+
+/** One quota window/limit as the quota route reports it. */
+export interface ZcodeQuotaLimit {
+  /** Server limit kind: `TIME_LIMIT` (the 5-hour window), `TOKENS_LIMIT`, … */
+  type: string
+  /** Window length in the server's unit (TIME_LIMIT: hours), when reported. */
+  unit?: number
+  usage?: number
+  currentValue?: number
+  remaining?: number
+  /** Percent already used, 0–100. */
+  percentage?: number
+  /** When this limit resets, epoch milliseconds. */
+  nextResetTime?: number
+}
+
+/** The JSON document the quota route answers with. */
+export interface ZcodeQuotaDoc {
+  status: 'ok' | 'signed-out' | 'error'
+  fetchedAt: number
+  /** Plan tier, e.g. `pro`, when reported. */
+  level?: string
+  limits?: ZcodeQuotaLimit[]
+  /** Terminal failure text, present only on status 'error'. */
+  error?: string
+}
+
+/**
+ * Narrow an unknown parsed JSON value to a {@link ZcodeQuotaDoc}.
+ * @param value - anything the route returned.
+ * @returns whether the value is a quota document the UI can render.
+ */
+export function isZcodeQuotaDoc(value: unknown): value is ZcodeQuotaDoc {
+  if (typeof value !== 'object' || value === null) return false
+  const doc = value as Record<string, unknown>
+  if (doc.status !== 'ok' && doc.status !== 'signed-out' && doc.status !== 'error') return false
+  if (typeof doc.fetchedAt !== 'number') return false
+  if (doc.level !== undefined && typeof doc.level !== 'string') return false
+  if (doc.error !== undefined && (typeof doc.error !== 'string' || doc.error.length === 0)) return false
+  const limits = doc.limits
+  if (limits !== undefined) {
+    if (!Array.isArray(limits)) return false
+    for (const entry of limits) {
+      if (typeof entry !== 'object' || entry === null) return false
+      const limit = entry as Record<string, unknown>
+      if (typeof limit.type !== 'string' || limit.type.length === 0) return false
+      for (const field of ['unit', 'usage', 'currentValue', 'remaining', 'percentage', 'nextResetTime'] as const) {
+        if (limit[field] !== undefined && (typeof limit[field] !== 'number' || !Number.isFinite(limit[field]))) return false
+      }
+    }
+  }
+  return true
+}
 
 /**
  * Narrow an unknown parsed JSON value to a {@link ZcodeWebStatus}. A 200 is

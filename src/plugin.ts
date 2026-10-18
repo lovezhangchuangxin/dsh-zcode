@@ -19,6 +19,7 @@ import { resolveModels } from './models.ts'
 import { runZcodeLogin } from './zcode-oauth.ts'
 import { registerZcodeWebUi } from './webui.ts'
 import { createDeviceMidResolver, type DeviceIdStore } from './device-id.ts'
+import { BigModelQuotaClient } from './quota.ts'
 
 export const name = 'dsh-zcode'
 export const inject = ['llm']
@@ -109,8 +110,9 @@ export function apply(ctx: Context, config: ConfigType): void {
 
   // The harness ships no generic surface listing authorization flows, so the
   // plugin brings its own: loopback routes on the host web server plus a
-  // Settings page in the browser half (lib/client.js).
-  registerZcodeWebUi(ctx, { key: CREDENTIAL_KEY, readGrant })
+  // Settings page and a bottom-bar quota badge in the browser half.
+  const quota = new BigModelQuotaClient({ loadGrant: readGrant })
+  registerZcodeWebUi(ctx, { key: CREDENTIAL_KEY, readGrant, readQuota: force => quota.snapshot(force) })
 
   ctx.logger.info('dsh-zcode: provider "%s" registered (%d models)', PROVIDER, adapter.modelCount())
 }

@@ -27,6 +27,16 @@ export const zh = {
   loadFailed: '无法读取登录状态。',
   actionFailed: '操作失败，请重试。',
   reload: '重新加载',
+  quotaTitle: '额度',
+  quotaFiveHour: '5 小时窗口',
+  quotaTokens: '令牌额度',
+  quotaUsed: '已用',
+  quotaRemaining: '剩余',
+  quotaResetsIn: '重置于',
+  quotaRefresh: '刷新',
+  quotaUnavailable: '暂无额度数据',
+  quotaChipTitle: 'GLM Coding Plan 5 小时窗口，重置于 {time}。点击刷新。',
+  quotaChipTitlePlain: 'GLM Coding Plan 额度。点击刷新。',
 } as const
 
 export const en = {
@@ -51,4 +61,14 @@ export const en = {
   loadFailed: 'Could not read the sign-in state.',
   actionFailed: 'Action failed; try again.',
   reload: 'Reload',
+  quotaTitle: 'Quota',
+  quotaFiveHour: '5-hour window',
+  quotaTokens: 'Token budget',
+  quotaUsed: 'used',
+  quotaRemaining: 'remaining',
+  quotaResetsIn: 'resets at',
+  quotaRefresh: 'Refresh',
+  quotaUnavailable: 'No quota data',
+  quotaChipTitle: 'GLM Coding Plan 5-hour window; resets at {time}. Click to refresh.',
+  quotaChipTitlePlain: 'GLM Coding Plan quota. Click to refresh.',
 } as const

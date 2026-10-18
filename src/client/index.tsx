@@ -12,8 +12,9 @@
  */
 
 import { ZcodeSection } from './ZcodeSection.tsx'
+import { QuotaChip } from './QuotaChip.tsx'
 import { en, zh } from './locales.ts'
-import type { ClientContext } from './runtime.ts'
+import type { ClientContext, ModelDirectoriesService } from './runtime.ts'
 
 export const name = 'dsh-zcode'
 export const inject = ['slots', 'locale']
@@ -45,4 +46,19 @@ export function apply(ctx: ClientContext): void {
           label: () => t('nav'),
           locale: NAMESPACE,
         }, ZcodeSection))))
+  guarded('quota badge subscription', () =>
+    ctx.inject(['modelDirectories'], (scope) =>
+      guarded('quota badge registration', () =>
+        scope.slots.inject('conversation.input.right', () =>
+          guarded('quota badge entry', () =>
+            scope.slots.register({
+              name: 'conversation.input.right',
+              id: 'zcode-quota',
+              order: 9,
+              inject: (owner) => ({
+                directory: (scope as unknown as { modelDirectories: ModelDirectoriesService })
+                  .modelDirectories.directoryFor(String(owner)).store,
+                t,
+              }),
+            }, QuotaChip))))))
 }

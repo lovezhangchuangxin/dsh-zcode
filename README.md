@@ -7,6 +7,7 @@
 - **官方同款登录链路**：`zcode.z.ai` CLI 轮询式 OAuth，浏览器确认后自动完成，凭据存入 dsh 凭据库；
 - **短期项目令牌（PAT）**：每请求自动签发、内存缓存、到期前自动续签、401 按指纹废弃重签——服务端计量视角与官方客户端一致（`clientType: "zcode"` / `usageScene: "CODING_PLAN"`）；
 - **自带登录 UI**：在 Settings 面板注册 **ZCode (BigModel)** 设置页（dsh 宿主没有通用的第三方登录入口）；
+- **额度可视**：对话底栏徽章实时显示 5 小时窗口剩余与重置倒计时（仅当前会话使用 zcode-glm 模型时出现），设置页有完整额度卡（5 小时窗口 + 令牌额度 + 重置时间 + 套餐等级）；
 - **稳定设备身份**：自动生成 UUID 并持久化，等价于官方客户端安装时生成的设备号；
 - **流式推理**：Anthropic Messages 协议 + SSE，思考强度（effort）可调，内置空闲看门狗。
 
@@ -27,7 +28,7 @@
 
 ### 登录入口（为什么自带设置页）
 
-dsh 宿主没有通用的「列出所有 authorization flow」界面——内置账号页只接 DeepSeek 平台流程，所以插件自带 UI：宿主侧在 host web server 上挂 4 条仅限回环地址的插件路由（`/plugins/dsh-zcode/status|signin|cancel|signout`，写操作需状态文档下发的进程内 control key），浏览器侧是一个 `d.client` 模块（`lib/client.js`，ModuleLoader 封套），在 Settings 面板注册设置页。两侧共享 `src/webui-protocol.ts` 的线上契约。
+dsh 宿主没有通用的「列出所有 authorization flow」界面——内置账号页只接 DeepSeek 平台流程，所以插件自带 UI：宿主侧在 host web server 上挂 5 条仅限回环地址的插件路由（`/plugins/dsh-zcode/status|signin|cancel|signout|quota`，写操作需状态文档下发的进程内 control key，`quota` 走官方同款 `GET /api/monitor/usage/quota/limit` 并带 60 秒缓存），浏览器侧是一个 `d.client` 模块（`lib/client.js`，ModuleLoader 封套），在 Settings 面板注册设置页、在对话输入栏右侧注册额度徽章。两侧共享 `src/webui-protocol.ts` 的线上契约。
 
 ### 宿主模块绑定（为什么有 `lib/boot.js`）
 
@@ -121,10 +122,12 @@ src/
   boot.ts            宿主模块绑定（解析钩子，见上文）
   adapter.ts         Anthropic Messages 适配器（流式、空闲看门狗、PAT 注入）
   bigmodel-pat.ts    PAT 三步链与缓存
+  quota.ts           Coding Plan 额度拉取（60s 缓存）
   zcode-oauth.ts     zcode.z.ai 轮询式 OAuth
-  webui.ts           登录 UI 宿主侧：4 条回环路由 + begin() 驱动
+  device-id.ts       持久化设备号
+  webui.ts           登录 UI 宿主侧：5 条回环路由 + begin() 驱动
   webui-protocol.ts  宿主/浏览器共享的线上契约
-  client/            浏览器半体：Settings 设置页（React，无宿主依赖）
+  client/            浏览器半体：Settings 设置页、额度卡与底栏徽章（React，无宿主依赖）
 scripts/
   build-client.mjs   客户端封套构建
 ```
