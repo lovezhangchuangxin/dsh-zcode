@@ -23,8 +23,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
 import type { ZcodeGrant } from './types.ts'
 import {
-  ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_QUOTA_PATH, ZCODE_UI_SIGNIN_PATH,
-  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc,
+  ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_QUOTA_PATH, ZCODE_UI_RESET_PATH,
+  ZCODE_UI_RESET_USE_PATH, ZCODE_UI_SIGNIN_PATH, ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH,
+  type ZcodeQuotaDoc, type ZcodeResetDoc, type ZcodeResetUseDoc,
   type ZcodeWebAttempt, type ZcodeWebStatus,
 } from './webui-protocol.ts'
 
@@ -115,6 +116,10 @@ export interface ZcodeWebUiDeps {
   readGrant: () => Promise<ZcodeGrant | undefined>
   /** Coding-plan quota snapshot; `force` bypasses the host-side cache. */
   readQuota: (force: boolean) => Promise<ZcodeQuotaDoc>
+  /** Reset-availability snapshot, never throws. */
+  readResetStatus: () => Promise<ZcodeResetDoc>
+  /** Consume one five-hour reset; success also invalidates the quota cache. */
+  useReset: () => Promise<ZcodeResetUseDoc>
 }
 
 /**
@@ -262,6 +267,25 @@ export function registerZcodeWebUi(ctx: Context, deps: ZcodeWebUiDeps): void {
         json(res, 200, await deps.readQuota(refresh))
       }
 
+      /** Read-only route: the reset-availability document. */
+      const handleResetStatus = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          json(res, 405, { error: 'method not allowed' })
+          return
+        }
+        if (!loopbackRequest(req)) {
+          json(res, 403, { error: 'request not trusted' })
+          return
+        }
+        json(res, 200, await deps.readResetStatus())
+      }
+
+      /** Control-keyed write: consume one five-hour reset. */
+      const handleResetUse = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+        if (!guardWrite(req, res)) return
+        json(res, 200, await deps.useReset())
+      }
+
       /** Wrap one handler so an internal failure answers 500 instead of leaving an unhandled rejection. */
       const respond = (handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>) =>
         async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -280,6 +304,8 @@ export function registerZcodeWebUi(ctx: Context, deps: ZcodeWebUiDeps): void {
         webServer.register({ kind: 'exact', path: ZCODE_UI_CANCEL_PATH, handler: respond(handleCancel) }),
         webServer.register({ kind: 'exact', path: ZCODE_UI_SIGNOUT_PATH, handler: respond(handleSignOut) }),
         webServer.register({ kind: 'exact', path: ZCODE_UI_QUOTA_PATH, handler: respond(handleQuota) }),
+        webServer.register({ kind: 'exact', path: ZCODE_UI_RESET_PATH, handler: respond(handleResetStatus) }),
+        webServer.register({ kind: 'exact', path: ZCODE_UI_RESET_USE_PATH, handler: respond(handleResetUse) }),
       ]
       return () => {
         for (const dispose of disposers) dispose()

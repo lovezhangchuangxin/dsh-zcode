@@ -1,8 +1,9 @@
 /**
- * The ZCode settings section: sign-in state, the browser-authorization
- * attempt with its consent link, and sign-out. All state comes from the
- * plugin-owned status route (webui.ts); every action is one loopback POST
- * authorized by the control key that route hands out.
+ * The ZCode settings section: sign-in state, the 5-hour quota card with its
+ * reset clock, and the quota-reset card (confirm dialog → consume one
+ * five-hour reset). All state comes from the plugin-owned routes; every
+ * action is one loopback POST authorized by the status document's control
+ * key.
  *
  * @module dsh-zcode/client/ZcodeSection
  */
@@ -13,11 +14,11 @@ import {
   ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc, type ZcodeWebStatus,
 } from '../webui-protocol.ts'
 import {
-  countdownText, fetchQuota, fiveHourLimit, monthlyCreditsLimit, QUOTA_POLL_MS, resetClockText, usedPercent,
+  countdownText, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent, useReset,
 } from './quota.ts'
 
-/** Locale translator injected through the registration's locale namespace. */
-type T = (key: string) => string
+/** Locale translator. */
+type T = (key: string, params?: Record<string, string | number>) => string
 
 export interface ZcodeSectionProps {
   t: T
@@ -25,50 +26,94 @@ export interface ZcodeSectionProps {
   close?: () => void
 }
 
-/** Poll cadence: tight while an attempt runs, relaxed otherwise. */
-const RUNNING_POLL_MS = 1500
-const IDLE_POLL_MS = 15000
-
-/* Neutral styling only — the panel must read acceptably in any theme the
-   shell offers; borders are translucent grays and text colors inherit. */
+/* One visual language for the section: quiet surfaces, a single blue accent,
+   and traffic-light states on the usage bar. Neutral grays keep both themes
+   readable; text colors inherit. */
 const styles = {
-  section: { display: 'flex', flexDirection: 'column', gap: 12 } as const,
+  section: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
   card: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
-    padding: '14px 16px',
-    border: '1px solid rgba(128,128,128,.4)',
-    borderRadius: 8,
+    gap: 12,
+    padding: '16px 18px',
+    border: '1px solid rgba(128,128,128,.22)',
+    borderRadius: 12,
+    background: 'rgba(128,128,128,.06)',
   },
-  title: { margin: 0, fontSize: 15, fontWeight: 600 },
-  intro: { margin: 0, fontSize: 13, opacity: .8, lineHeight: 1.5 },
+  title: { margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: '.01em' },
+  intro: { margin: 0, fontSize: 13, opacity: .75, lineHeight: 1.6 },
   row: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } as const,
   primary: {
-    padding: '7px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-    background: '#3b82f6', color: '#fff', fontSize: 13,
+    padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+    background: '#3b82f6', color: '#fff', fontSize: 13, fontWeight: 500,
   },
   outline: {
-    padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-    background: 'transparent', color: 'inherit', border: '1px solid rgba(128,128,128,.5)',
+    padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+    background: 'transparent', color: 'inherit', border: '1px solid rgba(128,128,128,.45)',
+  },
+  ghost: {
+    padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+    background: 'transparent', color: 'inherit', border: '1px solid rgba(128,128,128,.35)',
   },
   linkButton: {
-    padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-    background: 'transparent', border: '1px solid rgba(128,128,128,.5)',
+    padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500,
+    background: 'transparent', border: '1px solid rgba(128,128,128,.45)',
     color: '#3b82f6', textDecoration: 'none',
   },
-  quotaBar: { height: 6, borderRadius: 3, background: 'rgba(128,128,128,.3)', overflow: 'hidden' } as const,
-  quotaBarFill: { height: '100%', borderRadius: 3, background: '#3b82f6' } as const,
-  quotaRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, fontSize: 13 } as const,
-  badge: {
-    fontSize: 11, padding: '1px 8px', borderRadius: 999,
-    border: '1px solid rgba(128,128,128,.5)', textTransform: 'uppercase', letterSpacing: '.04em',
-  },
-  muted: { margin: 0, fontSize: 13, opacity: .75 },
-  error: { margin: 0, fontSize: 13, color: '#e5484d', wordBreak: 'break-word' },
+  muted: { margin: 0, fontSize: 12.5, opacity: .68 },
+  error: { margin: 0, fontSize: 13, color: '#e5484d', wordBreak: 'break-word', lineHeight: 1.5 },
   mono: { fontSize: 12, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all', opacity: .8 },
-  factRow: { display: 'flex', gap: 8, fontSize: 13 } as const,
+  factRow: { display: 'flex', gap: 8, fontSize: 13, alignItems: 'baseline' } as const,
+  badge: {
+    fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
+    border: '1px solid rgba(128,128,128,.45)', textTransform: 'uppercase', letterSpacing: '.06em',
+    opacity: .8,
+  },
+  heroRow: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 } as const,
+  heroValue: { fontSize: 26, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' } as const,
+  heroUnit: { fontSize: 13, opacity: .6, marginLeft: 2 },
+  heroSide: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 } as const,
+  heroClock: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
+  bar: { height: 8, borderRadius: 999, background: 'rgba(128,128,128,.25)', overflow: 'hidden' } as const,
+  barFill: { height: '100%', borderRadius: 999, transition: 'width .3s ease' } as const,
+  metaRow: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, opacity: .65 } as const,
+  resetCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '14px 18px',
+    border: '1px solid rgba(59,130,246,.35)',
+    borderLeft: '3px solid #3b82f6',
+    borderRadius: 12,
+    background: 'rgba(59,130,246,.06)',
+  },
+  overlay: {
+    position: 'fixed', inset: 0, zIndex: 1000,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(0,0,0,.45)', padding: 24,
+  } as const,
+  dialog: {
+    width: 'min(380px, 92vw)',
+    display: 'flex', flexDirection: 'column', gap: 14,
+    padding: 20,
+    borderRadius: 14,
+    border: '1px solid rgba(128,128,128,.25)',
+    background: '#1e1e21',
+    color: '#f4f4f5',
+    boxShadow: '0 20px 50px rgba(0,0,0,.35)',
+  } as const,
+  notice: {
+    margin: 0, fontSize: 12.5, padding: '6px 10px', borderRadius: 8,
+    background: 'rgba(59,130,246,.1)', color: 'inherit',
+  },
 } as const
+
+/** Progress color by consumed share: calm blue, warning amber, critical red. */
+function usageColor(usedPercentValue: number): string {
+  if (usedPercentValue >= 85) return '#ef4444'
+  if (usedPercentValue >= 60) return '#f59e0b'
+  return '#3b82f6'
+}
 
 export function ZcodeSection({ t }: ZcodeSectionProps) {
   const [doc, setDoc] = useState<ZcodeWebStatus | null>(null)
@@ -104,7 +149,7 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
 
   const phase = doc?.attempt?.phase
   useEffect(() => {
-    const timer = setInterval(() => { void refresh() }, phase === 'running' ? RUNNING_POLL_MS : IDLE_POLL_MS)
+    const timer = setInterval(() => { void refresh() }, phase === 'running' ? 1500 : 15000)
     return () => { clearInterval(timer) }
   }, [phase, refresh])
 
@@ -160,21 +205,16 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
       {account !== null
         ? (
           <div style={styles.card}>
-            <h3 style={styles.title}>{t('title')}</h3>
-            <p style={styles.muted}>{t('signedInAs')}</p>
-            <div style={styles.factRow}>
-              <span style={styles.mono}>{account.username ?? account.userId}</span>
+            <div style={styles.heroRow}>
+              <h3 style={styles.title}>{t('title')}</h3>
+              <span style={styles.row}>
+                <span style={styles.mono}>{account.username ?? account.userId}</span>
+                <button type="button" style={styles.ghost} disabled={busy} onClick={signOut}>{t('signOut')}</button>
+              </span>
             </div>
-            <div style={styles.factRow}>
-              <span style={styles.muted}>{t('userId')}:</span>
-              <span style={styles.mono}>{account.userId}</span>
-            </div>
-            <div style={styles.factRow}>
-              <span style={styles.muted}>{t('signedAt')}:</span>
-              <span style={styles.muted}>{new Date(account.grantedAt).toLocaleString()}</span>
-            </div>
-            <div style={styles.row}>
-              <button type="button" style={styles.outline} disabled={busy} onClick={signOut}>{t('signOut')}</button>
+            <div style={styles.metaRow}>
+              <span>{t('userId')}: <span style={styles.mono}>{account.userId}</span></span>
+              <span>{t('signedAt')} {new Date(account.grantedAt).toLocaleString()}</span>
             </div>
           </div>
         )
@@ -217,11 +257,12 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
             </div>
           )}
       {account !== null ? <QuotaCard t={t} /> : null}
+      {account !== null ? <ResetCard t={t} controlKey={doc?.controlKey} /> : null}
       {failure !== null
         ? (
           <p style={styles.error}>
             {t(failure === 'action' ? 'actionFailed' : 'loadFailed')}{' '}
-            <button type="button" style={{ ...styles.outline, padding: '2px 10px' }} onClick={() => { void refresh() }}>
+            <button type="button" style={styles.ghost} onClick={() => { void refresh() }}>
               {t('reload')}
             </button>
           </p>
@@ -231,8 +272,8 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
   )
 }
 
-/** The Coding Plan quota card: 5-hour window, token budget, reset times. */
-function QuotaCard({ t }: { t: (key: string) => string }) {
+/** The 5-hour quota card: remaining share as the hero figure, reset clock beside it. */
+function QuotaCard({ t }: { t: T }) {
   const [doc, setDoc] = useState<ZcodeQuotaDoc | undefined>()
   const [busy, setBusy] = useState(false)
 
@@ -251,105 +292,162 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
     return () => { clearInterval(timer) }
   }, [refresh])
 
-  const window5h = doc?.status === 'ok' ? fiveHourLimit(doc) : undefined
-  const monthly = doc?.status === 'ok' ? monthlyCreditsLimit(doc) : undefined
+  const limit = doc?.status === 'ok' ? fiveHourLimit(doc) : undefined
+  const percent = limit !== undefined ? usedPercent(limit) : undefined
+  const remaining = percent === undefined ? undefined : Math.max(0, 100 - percent)
+  const resetAt = limit?.nextResetTime
 
   if (doc === undefined) {
     return (
       <div style={styles.card}>
-        <div style={styles.quotaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
+        <div style={styles.metaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
         <p style={styles.muted}>…</p>
       </div>
     )
   }
-  if (doc.status !== 'ok') {
+  if (doc.status !== 'ok' || limit === undefined || percent === undefined || remaining === undefined) {
     return (
       <div style={styles.card}>
-        <div style={styles.quotaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
+        <span style={styles.title}>{t('quotaTitle')}</span>
         <p style={styles.error}>{doc.status === 'error' ? (doc.error ?? t('quotaUnavailable')) : t('quotaUnavailable')}</p>
       </div>
     )
   }
 
-  const windowPercent = window5h !== undefined ? usedPercent(window5h) : undefined
-  const monthlyPercent = monthly !== undefined ? usedPercent(monthly) : undefined
-
   return (
     <div style={styles.card}>
-      <div style={styles.quotaRow}>
-        <span style={styles.title}>{t('quotaTitle')}</span>
-        <span style={styles.row}>
+      <div style={styles.heroRow}>
+        <div style={styles.row}>
+          <span style={styles.title}>{t('quotaFiveHour')}</span>
           {doc.level === undefined ? null : <span style={styles.badge}>{doc.level}</span>}
-          <button type="button" style={{ ...styles.outline, padding: '2px 10px' }} disabled={busy} onClick={() => { void refresh(true) }}>
-            {busy ? '…' : t('quotaRefresh')}
-          </button>
-        </span>
+        </div>
+        <button type="button" style={styles.ghost} disabled={busy} onClick={() => { void refresh(true) }}>
+          {busy ? '…' : t('quotaRefresh')}
+        </button>
       </div>
 
-      {window5h === undefined && monthly === undefined
-        ? <p style={styles.muted}>{t('quotaUnavailable')}</p>
-        : null}
-
-      {window5h === undefined ? null : (
-        <div>
-          <div style={styles.quotaRow}>
-            <span style={styles.muted}>{t('quotaFiveHour')}</span>
-            <span style={styles.muted}>
-              {windowPercent === undefined
-                ? ''
-                : `${t('quotaRemaining')} ${Math.max(0, 100 - windowPercent)}%`}
-            </span>
-          </div>
-          <div style={styles.quotaBar}>
-            <div style={{ ...styles.quotaBarFill, width: `${windowPercent ?? 0}%` }} />
-          </div>
-          <div style={styles.quotaRow}>
-            <span style={styles.muted}>
-              {windowPercent === undefined ? '' : `${t('quotaUsed')} ${windowPercent}%`}
-            </span>
-            <span style={styles.muted}>
-              {window5h.nextResetTime === undefined
-                ? ''
-                : `${t('quotaResetsIn')} ${resetClockText(window5h.nextResetTime)}${countdownSuffix(window5h.nextResetTime)}`}
-            </span>
-          </div>
+      <div style={styles.heroRow}>
+        <div style={styles.row}>
+          <span style={{ ...styles.heroValue, color: usageColor(percent) }}>{remaining}</span>
+          <span style={styles.heroUnit}>%</span>
         </div>
-      )}
-
-      {monthly === undefined ? null : (
-        <div>
-          <div style={styles.quotaRow}>
-            <span style={styles.muted}>{t('quotaMonthlyCredits')}</span>
-            <span style={styles.muted}>
-              {monthlyPercent === undefined
-                ? ''
-                : `${t('quotaRemaining')} ${Math.max(0, 100 - monthlyPercent)}%`}
-            </span>
-          </div>
-          <div style={styles.quotaBar}>
-            <div style={{ ...styles.quotaBarFill, width: `${monthlyPercent ?? 0}%` }} />
-          </div>
-          <div style={styles.quotaRow}>
-            <span style={styles.muted}>
-              {monthly.currentValue !== undefined && monthly.usage !== undefined && monthly.usage > 0
-                ? `${t('quotaUsed')} ${monthly.currentValue} / ${monthly.usage}`
-                : ''}
-            </span>
-            <span style={styles.muted}>
-              {monthly.nextResetTime === undefined
-                ? ''
-                : `${t('quotaResetsIn')} ${resetClockText(monthly.nextResetTime)}`}
-            </span>
-          </div>
+        <div style={styles.heroSide}>
+          <span style={styles.muted}>{t('quotaResetsIn')}</span>
+          <span style={styles.heroClock}>{resetAt === undefined ? '—' : resetClockText(resetAt)}</span>
         </div>
-      )}
+      </div>
+
+      <div style={styles.bar}>
+        <div style={{ ...styles.barFill, width: `${percent}%`, background: usageColor(percent) }} />
+      </div>
+
+      <div style={styles.metaRow}>
+        <span>{t('quotaUsed')} {percent}%</span>
+        <span>
+          {resetAt === undefined ? '' : `${t('quotaRemainingTime')} ${countdownText(resetAt)}`}
+        </span>
+      </div>
     </div>
   )
 }
 
-/** Countdown in parentheses, for the reset line; empty when unknown or passed. */
-function countdownSuffix(resetAt: number): string {
-  const remaining = resetAt - Date.now()
-  if (remaining <= 0 || remaining > 24 * 60 * 60_000) return ''
-  return `（${countdownText(resetAt)}）`
+/**
+ * The quota-reset card: shows claimable five-hour resets, with a confirm
+ * dialog before consuming one (the official client's reset card flow).
+ */
+function ResetCard({ t, controlKey }: { t: T, controlKey: string | undefined }) {
+  const [doc, setDoc] = useState<import('../webui-protocol.ts').ZcodeResetDoc | undefined>()
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  /** 'done' shows the success notice; 'failed' the failure text from the use result. */
+  const [result, setResult] = useState<'done' | 'failed' | null>(null)
+  const [resultError, setResultError] = useState<string | undefined>()
+
+  const refresh = useCallback(async (): Promise<void> => {
+    setDoc(await fetchReset())
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, QUOTA_POLL_MS)
+    return () => { clearInterval(timer) }
+  }, [refresh])
+
+  const available = doc?.status === 'ok' ? (doc.fiveHourAvailable ?? 0) : 0
+  const expireAt = doc?.fiveHourEarliestExpireAt
+
+  const confirm = useCallback(async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const used = await useReset(controlKey)
+      if (used !== undefined && used.status === 'ok' && used.used === true) {
+        setResult('done')
+        setResultError(undefined)
+      } else {
+        setResult('failed')
+        setResultError(used?.status === 'error' ? used.error : undefined)
+      }
+      setConfirming(false)
+      // Fresh window, fresh availability.
+      await refresh()
+    } finally {
+      setBusy(false)
+    }
+  }, [controlKey, refresh])
+
+  return (
+    <div style={styles.resetCard}>
+      <div style={styles.metaRow}>
+        <span style={styles.title}>{t('resetTitle')}</span>
+        {doc !== undefined && doc.status === 'ok' && available > 0
+          ? <span style={styles.muted}>{t('resetCount', { count: available })}</span>
+          : null}
+      </div>
+
+      {doc === undefined
+        ? <p style={styles.muted}>…</p>
+        : doc.status !== 'ok'
+          ? <p style={styles.error}>{doc.status === 'error' ? (doc.error ?? t('resetUnavailable')) : t('resetUnavailable')}</p>
+          : available === 0
+            ? <p style={styles.muted}>{t('resetNone')}</p>
+            : (
+              <>
+                <p style={styles.muted}>
+                  {t('resetHint')}
+                  {expireAt === undefined ? '' : ` ${t('resetExpire', { time: resetClockText(expireAt) })}`}
+                </p>
+                <div style={styles.row}>
+                  <button type="button" style={styles.primary} disabled={busy} onClick={() => { setResult(null); setConfirming(true) }}>
+                    {t('resetButton')}
+                  </button>
+                </div>
+              </>
+              )}
+
+      {result === 'done'
+        ? <p style={styles.notice}>{t('resetDone')}</p>
+        : result === 'failed'
+          ? <p style={styles.error}>{t('resetFailed')}{resultError === undefined ? '' : `：${resultError}`}</p>
+          : null}
+
+      {confirming
+        ? (
+          <div style={styles.overlay} role="presentation" onClick={() => { if (!busy) setConfirming(false) }}>
+            <div style={styles.dialog} role="dialog" aria-modal="true" aria-label={t('resetConfirmTitle')} onClick={event => { event.stopPropagation() }}>
+              <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{t('resetConfirmTitle')}</h4>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, opacity: .8 }}>{t('resetConfirmBody')}</p>
+              <div style={{ ...styles.row, justifyContent: 'flex-end' }}>
+                <button type="button" style={{ ...styles.outline, color: '#f4f4f5', borderColor: 'rgba(255,255,255,.25)' }} disabled={busy} onClick={() => { setConfirming(false) }}>
+                  {t('resetConfirmCancel')}
+                </button>
+                <button type="button" style={styles.primary} disabled={busy} onClick={() => { void confirm() }}>
+                  {busy ? '…' : t('resetConfirmOk')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+        : null}
+    </div>
+  )
 }

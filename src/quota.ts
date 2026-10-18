@@ -52,6 +52,11 @@ export class BigModelQuotaClient {
     origin?: string
   }) {}
 
+  /** Drop the cached snapshot; the next read re-fetches (a consumed reset opens a fresh window). */
+  invalidate(): void {
+    this.cached = undefined
+  }
+
   /**
    * Read the quota snapshot.
    * @param force - bypass the cache TTL (manual refresh).

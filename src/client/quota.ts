@@ -7,7 +7,9 @@
  */
 
 import {
-  isZcodeQuotaDoc, ZCODE_UI_QUOTA_PATH, type ZcodeQuotaDoc, type ZcodeQuotaLimit,
+  isZcodeQuotaDoc, isZcodeResetDoc, isZcodeResetUseDoc, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_QUOTA_PATH,
+  ZCODE_UI_RESET_PATH, ZCODE_UI_RESET_USE_PATH, type ZcodeQuotaDoc, type ZcodeQuotaLimit,
+  type ZcodeResetDoc, type ZcodeResetUseDoc,
 } from '../webui-protocol.ts'
 
 /** Poll cadence for a visible quota surface; the host caches for the same span. */
@@ -25,6 +27,34 @@ export async function fetchQuota(force: boolean): Promise<ZcodeQuotaDoc | undefi
   }
 }
 
+/** Read the reset-availability document; undefined when the route misbehaved. */
+export async function fetchReset(): Promise<ZcodeResetDoc | undefined> {
+  try {
+    const res = await fetch(ZCODE_UI_RESET_PATH, { cache: 'no-store' })
+    const parsed: unknown = await res.json().catch(() => null)
+    if (!res.ok || !isZcodeResetDoc(parsed)) return undefined
+    return parsed
+  } catch {
+    return undefined
+  }
+}
+
+/** Consume one five-hour reset; undefined when the call failed outright. */
+export async function useReset(controlKey: string | undefined): Promise<ZcodeResetUseDoc | undefined> {
+  if (controlKey === undefined) return undefined
+  try {
+    const res = await fetch(ZCODE_UI_RESET_USE_PATH, {
+      method: 'POST',
+      headers: { [ZCODE_UI_CONTROL_HEADER]: controlKey },
+    })
+    const parsed: unknown = await res.json().catch(() => null)
+    if (!res.ok || !isZcodeResetUseDoc(parsed)) return undefined
+    return parsed
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The 5-hour window entry. The official client maps `TOKENS_LIMIT` with
  * unit 3 / number 5 onto its "5-hour" entitlement (server naming is
@@ -33,11 +63,6 @@ export async function fetchQuota(force: boolean): Promise<ZcodeQuotaDoc | undefi
  */
 export function fiveHourLimit(doc: ZcodeQuotaDoc): ZcodeQuotaLimit | undefined {
   return doc.limits?.find(limit => limit.type === 'TOKENS_LIMIT')
-}
-
-/** The monthly credits entry (`TIME_LIMIT`, unit 5 / number 1 in official terms). */
-export function monthlyCreditsLimit(doc: ZcodeQuotaDoc): ZcodeQuotaLimit | undefined {
-  return doc.limits?.find(limit => limit.type === 'TIME_LIMIT')
 }
 
 /** Percent already used, clamped to 0–100, from percentage or the usage/total ratio. */

@@ -60,6 +60,10 @@ export function QuotaChip({ directory, t }: { directory: DirectoryStoreLike, t: 
   const detail = resetAt !== undefined
     ? t('quotaChipTitle').replace('{time}', () => new Date(resetAt).toLocaleString())
     : t('quotaChipTitlePlain')
+  /** Traffic-light dot: calm while plenty remains, amber and red as it drains. */
+  const dot = remainingShare === undefined
+    ? 'rgba(128,128,128,.6)'
+    : remainingShare > 40 ? '#22c55e' : remainingShare > 15 ? '#f59e0b' : '#ef4444'
 
   return (
     <button
@@ -70,13 +74,14 @@ export function QuotaChip({ directory, t }: { directory: DirectoryStoreLike, t: 
       onClick={() => { void refresh(true) }}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '2px 8px', fontSize: 12, lineHeight: 1.4,
-        background: 'transparent', color: 'inherit', opacity: busy ? 0.5 : 0.8,
-        border: '1px solid rgba(128,128,128,.35)', borderRadius: 999,
+        padding: '3px 10px', fontSize: 12, lineHeight: 1.4,
+        background: 'rgba(128,128,128,.08)', color: 'inherit', opacity: busy ? 0.5 : 0.9,
+        border: '1px solid rgba(128,128,128,.3)', borderRadius: 999,
         cursor: busy ? 'default' : 'pointer', fontVariantNumeric: 'tabular-nums',
       }}
     >
-      <span aria-hidden style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.02em' }}>GLM</span>
+      <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
+      <span aria-hidden style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.03em' }}>GLM</span>
       <span>{label}</span>
     </button>
   )

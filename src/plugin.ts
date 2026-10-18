@@ -20,6 +20,7 @@ import { runZcodeLogin } from './zcode-oauth.ts'
 import { registerZcodeWebUi } from './webui.ts'
 import { createDeviceMidResolver, type DeviceIdStore } from './device-id.ts'
 import { BigModelQuotaClient } from './quota.ts'
+import { CodingPlanResetClient } from './reset.ts'
 
 export const name = 'dsh-zcode'
 export const inject = ['llm']
@@ -112,7 +113,20 @@ export function apply(ctx: Context, config: ConfigType): void {
   // plugin brings its own: loopback routes on the host web server plus a
   // Settings page and a bottom-bar quota badge in the browser half.
   const quota = new BigModelQuotaClient({ loadGrant: readGrant })
-  registerZcodeWebUi(ctx, { key: CREDENTIAL_KEY, readGrant, readQuota: force => quota.snapshot(force) })
+  const resets = new CodingPlanResetClient({ loadGrant: readGrant, appVersion: config.appVersion })
+  registerZcodeWebUi(ctx, {
+    key: CREDENTIAL_KEY,
+    readGrant,
+    readQuota: force => quota.snapshot(force),
+    readResetStatus: () => resets.status(),
+    // A consumed reset opens a fresh window; drop the quota cache so the
+    // next read shows it instead of the stale one.
+    useReset: async () => {
+      const { doc, quotaStale } = await resets.useFiveHour()
+      if (quotaStale) quota.invalidate()
+      return doc
+    },
+  })
 
   ctx.logger.info('dsh-zcode: provider "%s" registered (%d models)', PROVIDER, adapter.modelCount())
 }

@@ -13,6 +13,8 @@ export const ZCODE_UI_SIGNIN_PATH = '/plugins/dsh-zcode/signin'
 export const ZCODE_UI_CANCEL_PATH = '/plugins/dsh-zcode/cancel'
 export const ZCODE_UI_SIGNOUT_PATH = '/plugins/dsh-zcode/signout'
 export const ZCODE_UI_QUOTA_PATH = '/plugins/dsh-zcode/quota'
+export const ZCODE_UI_RESET_PATH = '/plugins/dsh-zcode/reset'
+export const ZCODE_UI_RESET_USE_PATH = '/plugins/dsh-zcode/reset/use'
 
 /** Header every state-changing route requires; carries the in-process control key. */
 export const ZCODE_UI_CONTROL_HEADER = 'x-dsh-zcode-control'
@@ -71,6 +73,60 @@ export interface ZcodeQuotaDoc {
   limits?: ZcodeQuotaLimit[]
   /** Terminal failure text, present only on status 'error'. */
   error?: string
+}
+
+/** Reset-availability snapshot for the quota-reset card. */
+export interface ZcodeResetDoc {
+  status: 'ok' | 'signed-out' | 'error'
+  fetchedAt: number
+  /** Five-hour resets currently claimable (status 'ok' only). */
+  fiveHourAvailable?: number
+  /** When the earliest five-hour reset opportunity expires, epoch ms. */
+  fiveHourEarliestExpireAt?: number
+  /** Week resets currently claimable (status 'ok' only). */
+  weekAvailable?: number
+  weekEarliestExpireAt?: number
+  error?: string
+}
+
+/** The result of consuming one five-hour reset. */
+export interface ZcodeResetUseDoc {
+  status: 'ok' | 'signed-out' | 'error'
+  used?: boolean
+  error?: string
+}
+
+/**
+ * Narrow an unknown parsed JSON value to a {@link ZcodeResetDoc}.
+ * @param value - anything the route returned.
+ * @returns whether the value is a reset document the UI can render.
+ */
+export function isZcodeResetDoc(value: unknown): value is ZcodeResetDoc {
+  if (typeof value !== 'object' || value === null) return false
+  const doc = value as Record<string, unknown>
+  if (doc.status !== 'ok' && doc.status !== 'signed-out' && doc.status !== 'error') return false
+  if (doc.status === 'ok' && typeof doc.fetchedAt !== 'number') return false
+  if (doc.status === 'ok' && typeof doc.fiveHourAvailable !== 'number') return false
+  if (doc.status === 'ok' && typeof doc.weekAvailable !== 'number') return false
+  for (const field of ['fiveHourEarliestExpireAt', 'weekEarliestExpireAt'] as const) {
+    if (doc[field] !== undefined && (typeof doc[field] !== 'number' || !Number.isFinite(doc[field]))) return false
+  }
+  if (doc.error !== undefined && (typeof doc.error !== 'string' || doc.error.length === 0)) return false
+  return true
+}
+
+/**
+ * Narrow an unknown parsed JSON value to a {@link ZcodeResetUseDoc}.
+ * @param value - anything the route returned.
+ * @returns whether the value is a use result the UI can render.
+ */
+export function isZcodeResetUseDoc(value: unknown): value is ZcodeResetUseDoc {
+  if (typeof value !== 'object' || value === null) return false
+  const doc = value as Record<string, unknown>
+  if (doc.status !== 'ok' && doc.status !== 'signed-out' && doc.status !== 'error') return false
+  if (doc.used !== undefined && doc.used !== true) return false
+  if (doc.error !== undefined && (typeof doc.error !== 'string' || doc.error.length === 0)) return false
+  return true
 }
 
 /**
