@@ -80,21 +80,25 @@ export class CodingPlanResetClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
       const data = readData(await response.json().catch(() => null) as { code?: unknown, msg?: unknown, data?: unknown })
-      const fiveHour = Array.isArray(data.available_five_hour_resets) ? data.available_five_hour_resets : []
-      const week = Array.isArray(data.available_week_resets) ? data.available_week_resets : []
-      const expires = (entries: unknown[]): number | undefined => {
+      // The official card counts only unexpired opportunities and surfaces the
+      // earliest expiry — the one a reset consumes (the use call names no
+      // target; the server takes the soonest-expiring).
+      const now = Date.now()
+      const liveExpiries = (entries: unknown[]): number[] => {
         const times = entries
           .map(entry => typeof entry === 'object' && entry !== null ? (entry as { expire_at?: unknown }).expire_at : undefined)
-          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-        return times.length > 0 ? Math.min(...times) : undefined
+          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > now)
+        return times.toSorted((left, right) => left - right)
       }
+      const fiveHour = liveExpiries(Array.isArray(data.available_five_hour_resets) ? data.available_five_hour_resets : [])
+      const week = liveExpiries(Array.isArray(data.available_week_resets) ? data.available_week_resets : [])
       return {
         status: 'ok',
-        fetchedAt: Date.now(),
+        fetchedAt: now,
         fiveHourAvailable: fiveHour.length,
-        ...(fiveHour.length > 0 && expires(fiveHour) !== undefined ? { fiveHourEarliestExpireAt: expires(fiveHour) } : {}),
+        ...(fiveHour.length > 0 ? { fiveHourEarliestExpireAt: fiveHour[0] } : {}),
         weekAvailable: week.length,
-        ...(week.length > 0 && expires(week) !== undefined ? { weekEarliestExpireAt: expires(week) } : {}),
+        ...(week.length > 0 ? { weekEarliestExpireAt: week[0] } : {}),
       }
     } catch (error) {
       return { status: 'error', fetchedAt: Date.now(), error: resetErrorText(error) }

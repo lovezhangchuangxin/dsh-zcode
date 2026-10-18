@@ -121,6 +121,8 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
   const [failure, setFailure] = useState<'load' | 'action' | null>(null)
   const [busy, setBusy] = useState(false)
   const [copyState, setCopyState] = useState<'copied' | 'failed' | null>(null)
+  /** Bumped after a consumed reset; the quota card force-refreshes on change. */
+  const [resetGeneration, setResetGeneration] = useState(0)
   /** Sequence guard: a late-arriving older response must not clobber a newer doc. */
   const lastIssued = useRef(0)
   const lastApplied = useRef(0)
@@ -256,8 +258,8 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
               </div>
             </div>
           )}
-      {account !== null ? <QuotaCard t={t} /> : null}
-      {account !== null ? <ResetCard t={t} controlKey={doc?.controlKey} /> : null}
+      {account !== null ? <QuotaCard t={t} generation={resetGeneration} /> : null}
+      {account !== null ? <ResetCard t={t} controlKey={doc?.controlKey} onUsed={() => { setResetGeneration(generation => generation + 1) }} /> : null}
       {failure !== null
         ? (
           <p style={styles.error}>
@@ -273,7 +275,7 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
 }
 
 /** The 5-hour quota card: remaining share as the hero figure, reset clock beside it. */
-function QuotaCard({ t }: { t: T }) {
+function QuotaCard({ t, generation }: { t: T, generation: number }) {
   const [doc, setDoc] = useState<ZcodeQuotaDoc | undefined>()
   const [busy, setBusy] = useState(false)
 
@@ -291,6 +293,12 @@ function QuotaCard({ t }: { t: T }) {
     const timer = setInterval(() => { void refresh(false) }, QUOTA_POLL_MS)
     return () => { clearInterval(timer) }
   }, [refresh])
+
+  // A consumed reset invalidates the host cache; read the fresh window now
+  // (the official client does the same through its quota-override pending).
+  useEffect(() => {
+    if (generation > 0) void refresh(true)
+  }, [generation, refresh])
 
   const limit = doc?.status === 'ok' ? fiveHourLimit(doc) : undefined
   const percent = limit !== undefined ? usedPercent(limit) : undefined
@@ -355,7 +363,7 @@ function QuotaCard({ t }: { t: T }) {
  * The quota-reset card: shows claimable five-hour resets, with a confirm
  * dialog before consuming one (the official client's reset card flow).
  */
-function ResetCard({ t, controlKey }: { t: T, controlKey: string | undefined }) {
+function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undefined, onUsed: () => void }) {
   const [doc, setDoc] = useState<import('../webui-protocol.ts').ZcodeResetDoc | undefined>()
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -383,6 +391,7 @@ function ResetCard({ t, controlKey }: { t: T, controlKey: string | undefined }) 
       if (used !== undefined && used.status === 'ok' && used.used === true) {
         setResult('done')
         setResultError(undefined)
+        onUsed()
       } else {
         setResult('failed')
         setResultError(used?.status === 'error' ? used.error : undefined)
@@ -393,7 +402,7 @@ function ResetCard({ t, controlKey }: { t: T, controlKey: string | undefined }) 
     } finally {
       setBusy(false)
     }
-  }, [controlKey, refresh])
+  }, [controlKey, onUsed, refresh])
 
   return (
     <div style={styles.resetCard}>
