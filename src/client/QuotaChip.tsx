@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
-import { countdownText, fetchQuota, fiveHourLimit, QUOTA_POLL_MS, usedPercent } from './quota.ts'
+import { fetchQuota, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent } from './quota.ts'
 import type { DirectoryStoreLike } from './runtime.ts'
 import type { ZcodeQuotaDoc } from '../webui-protocol.ts'
 
@@ -49,11 +49,13 @@ export function QuotaChip({ directory, t }: { directory: DirectoryStoreLike, t: 
     return percent === undefined ? undefined : 100 - percent
   })() : undefined
   const hasData = limit !== undefined && (remainingShare !== undefined || resetAt !== undefined)
+  // Wall-clock reset ("23:20") is the figure the official usage page shows;
+  // the full locale datetime rides in the tooltip.
   const label = !hasData
     ? (doc === undefined ? '…' : t('quotaUnavailable'))
     : [
       ...(remainingShare !== undefined ? [`${remainingShare}%`] : []),
-      ...(resetAt !== undefined ? [countdownText(resetAt)] : []),
+      ...(resetAt !== undefined ? [resetClockText(resetAt)] : []),
     ].join(' · ')
   const detail = resetAt !== undefined
     ? t('quotaChipTitle').replace('{time}', () => new Date(resetAt).toLocaleString())

@@ -13,7 +13,7 @@ import {
   ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc, type ZcodeWebStatus,
 } from '../webui-protocol.ts'
 import {
-  countdownText, fetchQuota, fiveHourLimit, QUOTA_POLL_MS, resetClockText, tokensLimit, usedPercent,
+  countdownText, fetchQuota, fiveHourLimit, monthlyCreditsLimit, QUOTA_POLL_MS, resetClockText, usedPercent,
 } from './quota.ts'
 
 /** Locale translator injected through the registration's locale namespace. */
@@ -252,7 +252,7 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
   }, [refresh])
 
   const window5h = doc?.status === 'ok' ? fiveHourLimit(doc) : undefined
-  const tokens = doc?.status === 'ok' ? tokensLimit(doc) : undefined
+  const monthly = doc?.status === 'ok' ? monthlyCreditsLimit(doc) : undefined
 
   if (doc === undefined) {
     return (
@@ -272,7 +272,7 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
   }
 
   const windowPercent = window5h !== undefined ? usedPercent(window5h) : undefined
-  const tokensPercent = tokens !== undefined ? usedPercent(tokens) : undefined
+  const monthlyPercent = monthly !== undefined ? usedPercent(monthly) : undefined
 
   return (
     <div style={styles.card}>
@@ -286,7 +286,7 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
         </span>
       </div>
 
-      {window5h === undefined && tokens === undefined
+      {window5h === undefined && monthly === undefined
         ? <p style={styles.muted}>{t('quotaUnavailable')}</p>
         : null}
 
@@ -297,7 +297,7 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
             <span style={styles.muted}>
               {windowPercent === undefined
                 ? ''
-                : `${t('quotaUsed')} ${windowPercent}% · ${t('quotaRemaining')} ${Math.max(0, 100 - windowPercent)}%`}
+                : `${t('quotaRemaining')} ${Math.max(0, 100 - windowPercent)}%`}
             </span>
           </div>
           <div style={styles.quotaBar}>
@@ -305,38 +305,51 @@ function QuotaCard({ t }: { t: (key: string) => string }) {
           </div>
           <div style={styles.quotaRow}>
             <span style={styles.muted}>
-              {window5h.currentValue !== undefined && window5h.usage !== undefined && window5h.usage > 0
-                ? `${window5h.currentValue} / ${window5h.usage}`
-                : ''}
+              {windowPercent === undefined ? '' : `${t('quotaUsed')} ${windowPercent}%`}
             </span>
             <span style={styles.muted}>
               {window5h.nextResetTime === undefined
                 ? ''
-                : `${t('quotaResetsIn')} ${countdownText(window5h.nextResetTime)} · ${resetClockText(window5h.nextResetTime)}`}
+                : `${t('quotaResetsIn')} ${resetClockText(window5h.nextResetTime)}${countdownSuffix(window5h.nextResetTime)}`}
             </span>
           </div>
         </div>
       )}
 
-      {tokens === undefined ? null : (
+      {monthly === undefined ? null : (
         <div>
           <div style={styles.quotaRow}>
-            <span style={styles.muted}>{t('quotaTokens')}</span>
+            <span style={styles.muted}>{t('quotaMonthlyCredits')}</span>
             <span style={styles.muted}>
-              {tokensPercent === undefined ? '' : `${t('quotaUsed')} ${tokensPercent}%`}
+              {monthlyPercent === undefined
+                ? ''
+                : `${t('quotaRemaining')} ${Math.max(0, 100 - monthlyPercent)}%`}
             </span>
           </div>
           <div style={styles.quotaBar}>
-            <div style={{ ...styles.quotaBarFill, width: `${tokensPercent ?? 0}%` }} />
+            <div style={{ ...styles.quotaBarFill, width: `${monthlyPercent ?? 0}%` }} />
           </div>
-          {tokens.nextResetTime === undefined ? null : (
-            <div style={styles.quotaRow}>
-              <span />
-              <span style={styles.muted}>{t('quotaResetsIn')} {countdownText(tokens.nextResetTime)} · {resetClockText(tokens.nextResetTime)}</span>
-            </div>
-          )}
+          <div style={styles.quotaRow}>
+            <span style={styles.muted}>
+              {monthly.currentValue !== undefined && monthly.usage !== undefined && monthly.usage > 0
+                ? `${t('quotaUsed')} ${monthly.currentValue} / ${monthly.usage}`
+                : ''}
+            </span>
+            <span style={styles.muted}>
+              {monthly.nextResetTime === undefined
+                ? ''
+                : `${t('quotaResetsIn')} ${resetClockText(monthly.nextResetTime)}`}
+            </span>
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+/** Countdown in parentheses, for the reset line; empty when unknown or passed. */
+function countdownSuffix(resetAt: number): string {
+  const remaining = resetAt - Date.now()
+  if (remaining <= 0 || remaining > 24 * 60 * 60_000) return ''
+  return `（${countdownText(resetAt)}）`
 }
