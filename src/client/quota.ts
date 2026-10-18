@@ -7,9 +7,9 @@
  */
 
 import {
-  isZcodeQuotaDoc, isZcodeResetDoc, isZcodeResetUseDoc, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_QUOTA_PATH,
-  ZCODE_UI_RESET_PATH, ZCODE_UI_RESET_USE_PATH, type ZcodeQuotaDoc, type ZcodeQuotaLimit,
-  type ZcodeResetDoc, type ZcodeResetUseDoc,
+  isZcodeQuotaDoc, isZcodeResetDoc, isZcodeResetUseDoc, isZcodeWebStatus, ZCODE_UI_CONTROL_HEADER,
+  ZCODE_UI_QUOTA_PATH, ZCODE_UI_RESET_PATH, ZCODE_UI_RESET_USE_PATH, ZCODE_UI_STATUS_PATH,
+  type ZcodeQuotaDoc, type ZcodeQuotaLimit, type ZcodeResetDoc, type ZcodeResetUseDoc,
 } from '../webui-protocol.ts'
 
 /** Poll cadence for a visible quota surface; the host caches for the same span. */
@@ -50,6 +50,21 @@ export async function useReset(controlKey: string | undefined): Promise<ZcodeRes
     const parsed: unknown = await res.json().catch(() => null)
     if (!res.ok || !isZcodeResetUseDoc(parsed)) return undefined
     return parsed
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The process's control key, from the status document — what a surface
+ * outside the settings page needs before it may drive any write route.
+ */
+export async function fetchControlKey(): Promise<string | undefined> {
+  try {
+    const res = await fetch(ZCODE_UI_STATUS_PATH, { cache: 'no-store' })
+    const parsed: unknown = await res.json().catch(() => null)
+    if (!res.ok || !isZcodeWebStatus(parsed)) return undefined
+    return parsed.controlKey
   } catch {
     return undefined
   }

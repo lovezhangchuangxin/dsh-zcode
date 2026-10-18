@@ -16,6 +16,7 @@ import {
 import {
   countdownText, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent, useReset,
 } from './quota.ts'
+import { ResetDialog } from './ResetDialog.tsx'
 
 /** Locale translator. */
 type T = (key: string, params?: Record<string, string | number>) => string
@@ -87,21 +88,6 @@ const styles = {
     borderRadius: 12,
     background: 'rgba(59,130,246,.06)',
   },
-  overlay: {
-    position: 'fixed', inset: 0, zIndex: 1000,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'rgba(0,0,0,.45)', padding: 24,
-  } as const,
-  dialog: {
-    width: 'min(380px, 92vw)',
-    display: 'flex', flexDirection: 'column', gap: 14,
-    padding: 20,
-    borderRadius: 14,
-    border: '1px solid rgba(128,128,128,.25)',
-    background: '#1e1e21',
-    color: '#f4f4f5',
-    boxShadow: '0 20px 50px rgba(0,0,0,.35)',
-  } as const,
   notice: {
     margin: 0, fontSize: 12.5, padding: '6px 10px', borderRadius: 8,
     background: 'rgba(59,130,246,.1)', color: 'inherit',
@@ -441,20 +427,13 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
 
       {confirming
         ? (
-          <div style={styles.overlay} role="presentation" onClick={() => { if (!busy) setConfirming(false) }}>
-            <div style={styles.dialog} role="dialog" aria-modal="true" aria-label={t('resetConfirmTitle')} onClick={event => { event.stopPropagation() }}>
-              <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{t('resetConfirmTitle')}</h4>
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, opacity: .8 }}>{t('resetConfirmBody')}</p>
-              <div style={{ ...styles.row, justifyContent: 'flex-end' }}>
-                <button type="button" style={{ ...styles.outline, color: '#f4f4f5', borderColor: 'rgba(255,255,255,.25)' }} disabled={busy} onClick={() => { setConfirming(false) }}>
-                  {t('resetConfirmCancel')}
-                </button>
-                <button type="button" style={styles.primary} disabled={busy} onClick={() => { void confirm() }}>
-                  {busy ? '…' : t('resetConfirmOk')}
-                </button>
-              </div>
-            </div>
-          </div>
+          <ResetDialog
+            t={t}
+            busy={busy}
+            detail={expireAt === undefined ? undefined : t('resetExpire', { time: resetClockText(expireAt) })}
+            onConfirm={() => { void confirm() }}
+            onCancel={() => { setConfirming(false) }}
+          />
         )
         : null}
     </div>
