@@ -27,8 +27,12 @@ const HOST_SPECIFIERS = [
   '@deepseek-ai/schemastery',
 ] as const
 
-/** package.json names accepted as "this directory is the dsh host". */
-const HOST_PACKAGE_NAMES = new Set(['@deepseek-ai/dsh', '@deepseek-ai/dsh-root'])
+/**
+ * package.json names accepted as "this directory is the dsh host".
+ * The desktop app ships its host under app.asar/dsh as @deepseek-ai/dsh-desktop-runtime
+ * (dsh-desktop-host lives in its node_modules), so accept it too.
+ */
+const HOST_PACKAGE_NAMES = new Set(['@deepseek-ai/dsh', '@deepseek-ai/dsh-root', '@deepseek-ai/dsh-desktop-runtime'])
 
 /** Global slot so an HMR re-import reuses the already-registered hooks. */
 const HOOKS_FLAG = Symbol.for('dsh-zcode.host-redirects')
