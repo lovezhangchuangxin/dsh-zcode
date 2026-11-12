@@ -41,14 +41,7 @@ dsh 发布版 CLI 把全部 `@deepseek-ai/*` 包放在 CLI 私有的 `node_modul
 
 ## 安装
 
-前置：一个能跑的 dsh。没有的话先装（Node ≥ 22.15）：
-
-```sh
-npm install -g @deepseek-ai/dsh
-dsh web          # Web 形态；首次运行创建 profile（Web 形态在 ~/.dsh/profiles/web）
-```
-
-然后按插件来源三选一。**① 从源码**（本地开发或 git 克隆）：
+按插件来源三选一。**① 从源码**（本地开发或 git 克隆）：
 
 ```sh
 git clone https://github.com/lovezhangchuangxin/dsh-zcode && cd dsh-zcode
