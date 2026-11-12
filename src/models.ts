@@ -22,6 +22,8 @@ export const GLM_REASONING_EFFORTS: readonly { id: ReturnType<typeof ReasoningEf
   { id: ReasoningEffortId('high'), name: 'High' },
 ]
 
+// Order mirrors the official client's catalog: current generation first
+// (flagship, flash, V-turbo), then older generations by recency.
 export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
   {
     id: 'GLM-5.3',
@@ -30,6 +32,24 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     contextWindow: 1_048_576,
     maxTokens: 128_000,
     thinking: true,
+  },
+  {
+    id: 'GLM-5.3-Flash',
+    name: 'GLM-5.3-Flash',
+    description: 'Native multimodal GLM model — images welcome.',
+    contextWindow: 1_048_576,
+    maxTokens: 128_000,
+    thinking: true,
+    vision: true,
+  },
+  {
+    id: 'GLM-5V-Turbo',
+    name: 'GLM-5V-Turbo',
+    description: 'Multimodal coding model with image input.',
+    contextWindow: 200_000,
+    maxTokens: 128_000,
+    thinking: true,
+    vision: true,
   },
   {
     id: 'GLM-5.2',
@@ -45,15 +65,6 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     contextWindow: 2_000_000,
     maxTokens: 128_000,
     thinking: true,
-  },
-  {
-    id: 'GLM-5.3-Flash',
-    name: 'GLM-5.3-Flash',
-    description: 'Native multimodal GLM model — images welcome.',
-    contextWindow: 1_048_576,
-    maxTokens: 128_000,
-    thinking: true,
-    vision: true,
   },
 ]
 
