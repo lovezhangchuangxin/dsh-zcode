@@ -11,13 +11,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   isZcodeWebStatus, ZCODE_UI_CANCEL_PATH, ZCODE_UI_CONTROL_HEADER, ZCODE_UI_SIGNIN_PATH,
-  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc, type ZcodeWebStatus,
+  ZCODE_UI_SIGNOUT_PATH, ZCODE_UI_STATUS_PATH, type ZcodeQuotaDoc, type ZcodeResetDoc, type ZcodeWebStatus,
 } from '../webui-protocol.ts'
 import {
-  countdownText, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent, useReset,
-  type ResetKind,
+  countdownText, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, resetOptionsOf, usedPercent,
+  useReset, type ResetKind,
 } from './quota.ts'
-import { ResetDialog, type ResetOption } from './ResetDialog.tsx'
+import { ResetDialog } from './ResetDialog.tsx'
 
 /** Locale translator. */
 type T = (key: string, params?: Record<string, string | number>) => string
@@ -302,7 +302,7 @@ function QuotaCard({ t, generation }: { t: T, generation: number }) {
  * (every available kind as a selectable row) before consuming one.
  */
 function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undefined, onUsed: () => void }) {
-  const [doc, setDoc] = useState<import('../webui-protocol.ts').ZcodeResetDoc | undefined>()
+  const [doc, setDoc] = useState<ZcodeResetDoc | undefined>()
   const [failed, setFailed] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -333,24 +333,7 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
     : 0
 
   /** The kinds with at least one claimable opportunity, in display order. */
-  const options: ResetOption[] = doc?.status === 'ok'
-    ? [
-      ...(doc.fiveHourAvailable
-        ? [{
-          kind: 'FIVE_HOUR' as const,
-          count: doc.fiveHourAvailable,
-          ...(doc.fiveHourEarliestExpireAt !== undefined ? { earliestExpireAt: doc.fiveHourEarliestExpireAt } : {}),
-        }]
-        : []),
-      ...(doc.weekAvailable
-        ? [{
-          kind: 'WEEK' as const,
-          count: doc.weekAvailable,
-          ...(doc.weekEarliestExpireAt !== undefined ? { earliestExpireAt: doc.weekEarliestExpireAt } : {}),
-        }]
-        : []),
-    ]
-    : []
+  const options = resetOptionsOf(doc)
 
   const confirm = useCallback(async (kind: ResetKind): Promise<void> => {
     setBusy(true)

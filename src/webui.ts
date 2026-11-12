@@ -1,18 +1,23 @@
 /**
- * Host half of the sign-in UI: four loopback routes on the host web server
- * that drive the authorization flow plugin.ts registers, so the plugin's own
- * Settings page can offer the sign-in the harness ships no generic surface
- * for (its account page is hardwired to the DeepSeek platform flow).
+ * Host half of the plugin's web UI: seven loopback routes on the host web
+ * server — the sign-in bridge driving the authorization flow plugin.ts
+ * registers (the harness ships no generic surface for third-party flows; its
+ * account page is hardwired to the DeepSeek platform), plus the quota and
+ * reset reads the browser half polls.
  *
- *   GET  /plugins/dsh-zcode/status   the whole state document — including the
- *                                    in-process control key every write route
- *                                    requires, readable only loopback and
- *                                    same-origin, so only a page this host
- *                                    served can pick it up
- *   POST /plugins/dsh-zcode/signin   start one attempt (a no-op report while
- *                                    one is already running)
- *   POST /plugins/dsh-zcode/cancel   withdraw the running attempt
- *   POST /plugins/dsh-zcode/signout  delete the stored grant
+ *   GET  /plugins/dsh-zcode/status     the whole state document — including the
+ *                                      in-process control key every write route
+ *                                      requires, readable only loopback and
+ *                                      same-origin, so only a page this host
+ *                                      served can pick it up
+ *   POST /plugins/dsh-zcode/signin     start one attempt (a no-op report while
+ *                                      one is already running)
+ *   POST /plugins/dsh-zcode/cancel     withdraw the running attempt
+ *   POST /plugins/dsh-zcode/signout    delete the stored grant
+ *   GET  /plugins/dsh-zcode/quota      Coding Plan quota snapshot (?refresh=1
+ *                                      bypasses the host cache)
+ *   GET  /plugins/dsh-zcode/reset      reset-availability snapshot
+ *   POST /plugins/dsh-zcode/reset/use  consume one reset; the body names the kind
  *
  * @module dsh-zcode/webui
  */

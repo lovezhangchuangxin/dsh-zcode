@@ -11,6 +11,7 @@ import {
   ZCODE_UI_QUOTA_PATH, ZCODE_UI_RESET_PATH, ZCODE_UI_RESET_USE_PATH, ZCODE_UI_STATUS_PATH,
   type ZcodeQuotaDoc, type ZcodeQuotaLimit, type ZcodeResetDoc, type ZcodeResetUseDoc,
 } from '../webui-protocol.ts'
+import type { ResetOption } from './ResetDialog.tsx'
 
 /** Poll cadence for a visible quota surface; the host caches for the same span. */
 export const QUOTA_POLL_MS = 60_000
@@ -72,6 +73,31 @@ export async function fetchControlKey(): Promise<string | undefined> {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The kinds with at least one claimable opportunity, in display order — the
+ * chooser rows (and the visibility of the entries that open it) both derive
+ * from this one projection.
+ */
+export function resetOptionsOf(doc: ZcodeResetDoc | undefined): ResetOption[] {
+  if (doc === undefined || doc.status !== 'ok') return []
+  return [
+    ...(doc.fiveHourAvailable
+      ? [{
+        kind: 'FIVE_HOUR' as const,
+        count: doc.fiveHourAvailable,
+        ...(doc.fiveHourEarliestExpireAt !== undefined ? { earliestExpireAt: doc.fiveHourEarliestExpireAt } : {}),
+      }]
+      : []),
+    ...(doc.weekAvailable
+      ? [{
+        kind: 'WEEK' as const,
+        count: doc.weekAvailable,
+        ...(doc.weekEarliestExpireAt !== undefined ? { earliestExpireAt: doc.weekEarliestExpireAt } : {}),
+      }]
+      : []),
+  ]
 }
 
 /**

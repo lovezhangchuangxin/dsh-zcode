@@ -12,10 +12,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  fetchControlKey, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent, useReset,
-  type ResetKind,
+  fetchControlKey, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, resetOptionsOf, usedPercent,
+  useReset, type ResetKind,
 } from './quota.ts'
-import { ResetDialog, type ResetOption } from './ResetDialog.tsx'
+import { ResetDialog } from './ResetDialog.tsx'
 import type { DirectoryStoreLike } from './runtime.ts'
 import type { ZcodeQuotaDoc, ZcodeResetDoc } from '../webui-protocol.ts'
 
@@ -127,24 +127,7 @@ export function QuotaChip({ directory, t }: { directory: DirectoryStoreLike, t: 
         : 'var(--dsw-alias-state-error-primary)'
 
   /** The kinds with at least one claimable opportunity, in display order. */
-  const options: ResetOption[] = resetDoc?.status === 'ok'
-    ? [
-      ...(resetDoc.fiveHourAvailable
-        ? [{
-          kind: 'FIVE_HOUR' as const,
-          count: resetDoc.fiveHourAvailable,
-          ...(resetDoc.fiveHourEarliestExpireAt !== undefined ? { earliestExpireAt: resetDoc.fiveHourEarliestExpireAt } : {}),
-        }]
-        : []),
-      ...(resetDoc.weekAvailable
-        ? [{
-          kind: 'WEEK' as const,
-          count: resetDoc.weekAvailable,
-          ...(resetDoc.weekEarliestExpireAt !== undefined ? { earliestExpireAt: resetDoc.weekEarliestExpireAt } : {}),
-        }]
-        : []),
-    ]
-    : []
+  const options = resetOptionsOf(resetDoc)
   /** Total claimable opportunities across kinds — the chip entry appears for either. */
   const resetsAvailable = resetDoc?.status === 'ok'
     ? (resetDoc.fiveHourAvailable ?? 0) + (resetDoc.weekAvailable ?? 0)

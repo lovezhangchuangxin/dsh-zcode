@@ -1,6 +1,6 @@
 {
   "name": "dsh-zcode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Use the Zhipu GLM Coding Plan in DeepSeek Harness: ZCode account sign-in, short-lived project tokens, and an Anthropic Messages adapter.",
   "type": "module",
   "main": "lib/boot.js",
@@ -24,7 +24,7 @@
     "zhipu"
   ],
   "engines": {
-    "dsh": ">=0.2.0-rc.0"
+    "dsh": ">=0.2.0-rc.2"
   },
   "dsh": {
     "bundle": {
