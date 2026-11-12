@@ -18,6 +18,7 @@ import { isGrantRecord, type ZcodeGrant } from './types.ts'
 import { resolveModels } from './models.ts'
 import { runZcodeLogin } from './zcode-oauth.ts'
 import { registerZcodeWebUi } from './webui.ts'
+import type { AttachmentStoreLike } from './images.ts'
 import { createDeviceMidResolver, type DeviceIdStore } from './device-id.ts'
 import { BigModelQuotaClient } from './quota.ts'
 import { CodingPlanResetClient } from './reset.ts'
@@ -76,6 +77,17 @@ export function apply(ctx: Context, config: ConfigType): void {
     defaultMaxTokens: config.defaultMaxTokens,
     streamIdleTimeoutMs: config.streamIdleTimeoutMs,
     loadGrant: readGrant,
+    resolveAttachments: () => ctx.get('attachments') as AttachmentStoreLike | undefined,
+    // Handle texts read best when the model can open the normalized copy
+    // itself: bridge the store's host path through the fs service like the
+    // reference adapter (a host without fs simply omits the path).
+    resolveImageAccess: (attachments, ref) => {
+      const hostPath = attachments.imageHostPath?.(ref)
+      if (hostPath === undefined) return undefined
+      const fs = ctx.get('fs') as { processPathFromHostPath?: (hostPath: string) => string | undefined } | undefined
+      const readonlyPath = fs?.processPathFromHostPath?.(hostPath)
+      return readonlyPath === undefined ? undefined : { readonlyPath }
+    },
     sourceHeaders: buildZcodeSourceHeaders({
       appVersion: config.appVersion,
       releaseChannel: 'production',
@@ -121,8 +133,8 @@ export function apply(ctx: Context, config: ConfigType): void {
     readResetStatus: () => resets.status(),
     // A consumed reset opens a fresh window; drop the quota cache so the
     // next read shows it instead of the stale one.
-    useReset: async () => {
-      const { doc, quotaStale } = await resets.useFiveHour()
+    useReset: async (kind) => {
+      const { doc, quotaStale } = await resets.use(kind)
       if (quotaStale) quota.invalidate()
       return doc
     },

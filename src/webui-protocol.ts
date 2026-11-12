@@ -89,10 +89,12 @@ export interface ZcodeResetDoc {
   error?: string
 }
 
-/** The result of consuming one five-hour reset. */
+/** The result of consuming one reset. */
 export interface ZcodeResetUseDoc {
   status: 'ok' | 'signed-out' | 'error'
   used?: boolean
+  /** Which window the consumed reset belonged to (status 'ok' only). */
+  usedKind?: 'FIVE_HOUR' | 'WEEK'
   error?: string
 }
 
@@ -125,6 +127,7 @@ export function isZcodeResetUseDoc(value: unknown): value is ZcodeResetUseDoc {
   const doc = value as Record<string, unknown>
   if (doc.status !== 'ok' && doc.status !== 'signed-out' && doc.status !== 'error') return false
   if (doc.used !== undefined && doc.used !== true) return false
+  if (doc.usedKind !== undefined && doc.usedKind !== 'FIVE_HOUR' && doc.usedKind !== 'WEEK') return false
   if (doc.error !== undefined && (typeof doc.error !== 'string' || doc.error.length === 0)) return false
   return true
 }

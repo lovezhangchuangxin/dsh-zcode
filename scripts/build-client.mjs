@@ -14,7 +14,7 @@ const result = await build({
   bundle: true,
   platform: 'browser',
   format: 'cjs',
-  external: ['react', 'react/jsx-runtime'],
+  external: ['react', 'react/jsx-runtime', 'react-dom'],
   jsx: 'automatic',
   write: false,
   legalComments: 'none',

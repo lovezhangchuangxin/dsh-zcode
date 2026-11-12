@@ -6,8 +6,9 @@
 
 - **官方同款登录链路**：`zcode.z.ai` CLI 轮询式 OAuth，浏览器确认后自动完成，凭据存入 dsh 凭据库；
 - **短期项目令牌（PAT）**：每请求自动签发、内存缓存、到期前自动续签、401 按指纹废弃重签——服务端计量视角与官方客户端一致（`clientType: "zcode"` / `usageScene: "CODING_PLAN"`）；
-- **自带登录 UI**：在 Settings 面板注册 **ZCode (BigModel)** 设置页（dsh 宿主没有通用的第三方登录入口）；
-- **额度可视**：对话底栏徽章实时显示 5 小时窗口剩余与重置倒计时（仅当前会话使用 zcode-glm 模型时出现），设置页有完整额度卡（5 小时窗口 + 令牌额度 + 重置时间 + 套餐等级）；
+- **图片输入**：原生多模态模型（默认目录中的 `GLM-5.3-Flash`）接受粘贴/上传的图片，走宿主 attachment 管线（归一化、去重、超预算 offload）以 Anthropic base64 图块内联；
+- **自带登录 UI**：在 Settings 面板注册 **ZCode (BigModel)** 设置页（dsh 宿主没有通用的第三方登录入口），样式全部落在宿主设计 token（`--dsw-alias-*`）上，明暗主题自适应；
+- **额度可视**：对话底栏徽章实时显示 5 小时窗口剩余与重置倒计时（仅当前会话使用 zcode-glm 模型时出现并轮询），设置页有完整额度卡（5 小时窗口 + 重置时间 + 套餐等级）与重置卡——重置弹窗按类型列出所有可用机会（5 小时 / 周），选中后一键消耗（服务端取该类型最早过期的一次）；
 - **稳定设备身份**：自动生成 UUID 并持久化，等价于官方客户端安装时生成的设备号；
 - **流式推理**：Anthropic Messages 协议 + SSE，思考强度（effort）可调，内置空闲看门狗。
 
@@ -64,16 +65,16 @@ pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
 ## 使用
 
 1. **登录**：Settings → **ZCode (BigModel)** → 「使用 BigModel 账号登录」。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）；页面轮询状态直到登录成功。
-2. **选模型**：Settings → Models 里出现 **ZCode GLM (Coding Plan)** 路由（无需 API key）。模型选择器中选择 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo`。
+2. **选模型**：Settings → Models 里出现 **ZCode GLM (Coding Plan)** 路由（无需 API key）。模型选择器中选择 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo` / `GLM-5.3-Flash`（后者支持图片）。
 
 ## 配置（cordis.patch.yml 的 `config:` 段）
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
 | `baseURL` | `https://open.bigmodel.cn/api/anthropic/v1` | 推理端点（Anthropic 惯例：base 含 `/v1`，adapter 追加 `/messages`） |
-| `appVersion` | `3.15.1` | 来源头与 PAT 签发上报的客户端版本 |
+| `appVersion` | `3.18.0` | 来源头与 PAT 签发上报的客户端版本 |
 | `deviceMid` | 空（自动生成） | 稳定设备号。留空时插件首次启动生成 UUID 并持久化到 dsh 凭据库（`dsh-zcode/device` 记录，跨重启、跨登出保持）；配置显式值时优先生效 |
-| `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo | 模型目录（id/name/contextWindow/maxTokens/thinking） |
+| `models` | GLM-5.3 / GLM-5.2 / GLM-5-Turbo / GLM-5.3-Flash | 模型目录（id/name/contextWindow/maxTokens/thinking/vision）。`vision: true` 的模型接受图片输入（内联 base64，单图目标 ≤3.5 MiB，整请求 base64 预算 16 MiB / 10 张，超出走宿主 offload） |
 | `defaultEffort` | `high` | 思考强度：off / low / medium / high（以 `output_config.effort` 直传服务端，与官方客户端一致；旧配置里的 `minimal` 会按 `low` 发送） |
 | `defaultMaxTokens` | `128000` | 默认输出上限（与官方客户端一致） |
 | `streamIdleTimeoutMs` | `120000` | 流式空闲超时（毫秒） |
@@ -101,7 +102,7 @@ pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
 
 ## 已知限制
 
-- **仅文本**：第一版不支持图片附件（图片块会显式报 `UNSUPPORTED_CONTENT`）。
+- **图片仅限视觉模型**：目录里 `vision` 未置位的模型收到图片时，宿主会把图片替换为占位文本（与官方行为一致）；把某个模型标成 `vision: true` 即可启用。
 - **登录态过期后需重新登录**：官方客户端同样未实现 refresh token 刷新（`refreshToken` 已随 grant 保存，预留给未来）。
 - **条款风险**：本插件把你的个人 Coding Plan 订阅接入第三方 harness，使用官方 App 同款接口与你自己的凭据，但可能不符合智谱服务条款；服务端策略变更可能随时导致失效。请自行评估，保持正常使用强度。
 
@@ -121,13 +122,14 @@ src/
   plugin.ts          宿主入口：provider/adapter 注册、授权流、web UI 桥接线
   boot.ts            宿主模块绑定（解析钩子，见上文）
   adapter.ts         Anthropic Messages 适配器（流式、空闲看门狗、PAT 注入）
+  images.ts          请求图片解析（attachment 引用 → base64 + 预算门）
   bigmodel-pat.ts    PAT 三步链与缓存
   quota.ts           Coding Plan 额度拉取（60s 缓存）
   zcode-oauth.ts     zcode.z.ai 轮询式 OAuth
   device-id.ts       持久化设备号
-  webui.ts           登录 UI 宿主侧：5 条回环路由 + begin() 驱动
+  webui.ts           登录 UI 宿主侧：7 条回环路由 + begin() 驱动
   webui-protocol.ts  宿主/浏览器共享的线上契约
-  client/            浏览器半体：Settings 设置页、额度卡与底栏徽章（React，无宿主依赖）
+  client/            浏览器半体：Settings 设置页、额度卡与底栏徽章（React，样式走宿主 --dsw-* token）
 scripts/
   build-client.mjs   客户端封套构建
 ```

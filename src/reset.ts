@@ -9,8 +9,9 @@
  *
  * Both take the ZCode platform JWT as the bearer and the BigModel login
  * token under `X-Bigmodel-Authorization` — the pair the sign-in grant
- * already stores. The plugin offers the five-hour reset, which is what the
- * official reset card's button does.
+ * already stores. The use call names no individual opportunity: within the
+ * chosen type the server always takes the soonest-expiring one, which is
+ * what the dialog's per-type rows present.
  *
  * @module dsh-zcode/reset
  */
@@ -106,11 +107,13 @@ export class CodingPlanResetClient {
   }
 
   /**
-   * Consume one five-hour reset. Never throws; a success also tells the
-   * caller to drop the quota cache so the next read shows the fresh window.
+   * Consume one reset of the chosen kind. Never throws; a success also tells
+   * the caller to drop the quota cache so the next read shows the fresh window.
+   * @param kind - which window to reset; the server consumes that type's
+   *   soonest-expiring opportunity.
    * @returns the use result document and whether the quota cache should reset.
    */
-  async useFiveHour(): Promise<{ doc: ZcodeResetUseDoc, quotaStale: boolean }> {
+  async use(kind: 'FIVE_HOUR' | 'WEEK'): Promise<{ doc: ZcodeResetUseDoc, quotaStale: boolean }> {
     const grant = await this.deps.loadGrant()
     if (grant === undefined) {
       return { doc: { status: 'signed-out' }, quotaStale: false }
@@ -120,13 +123,13 @@ export class CodingPlanResetClient {
       const response = await fetch(`${origin}/api/v1/coding-plan/reset/use`, {
         method: 'POST',
         headers: resetHeaders(grant, this.deps.appVersion),
-        body: JSON.stringify({ idempotency_key: randomUUID(), reset_type: 'FIVE_HOUR' }),
+        body: JSON.stringify({ idempotency_key: randomUUID(), reset_type: kind }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
       const data = readData(await response.json().catch(() => null) as { code?: unknown, msg?: unknown, data?: unknown })
       const used = (data as { used?: unknown }).used === true
       if (!used) throw new Error('the reset endpoint accepted the request but reported no reset used')
-      return { doc: { status: 'ok', used: true }, quotaStale: true }
+      return { doc: { status: 'ok', used: true, usedKind: kind }, quotaStale: true }
     } catch (error) {
       return { doc: { status: 'error', error: resetErrorText(error) }, quotaStale: false }
     }

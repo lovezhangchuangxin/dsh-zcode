@@ -13,6 +13,7 @@
 
 import { ZcodeSection } from './ZcodeSection.tsx'
 import { QuotaChip } from './QuotaChip.tsx'
+import { installStyles } from './styles.ts'
 import { en, zh } from './locales.ts'
 import type { ClientContext, ModelDirectoriesService } from './runtime.ts'
 
@@ -33,6 +34,10 @@ function guarded(label: string, run: () => (() => void) | undefined): () => void
 }
 
 export function apply(ctx: ClientContext): void {
+  // The stylesheet precedes every contribution: components render with
+  // classes only, so the styles must exist before any of them mounts.
+  guarded('stylesheet', () =>
+    ctx.effect(() => installStyles(), 'dsh-zcode: stylesheet'))
   guarded('settings copy', () =>
     ctx.effect(() => ctx.locale.register(NAMESPACE, { zh, en }), 'dsh-zcode: settings copy'))
   const t = ctx.locale.bind(NAMESPACE)

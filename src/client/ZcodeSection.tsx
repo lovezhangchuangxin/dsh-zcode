@@ -1,9 +1,9 @@
 /**
  * The ZCode settings section: sign-in state, the 5-hour quota card with its
- * reset clock, and the quota-reset card (confirm dialog → consume one
- * five-hour reset). All state comes from the plugin-owned routes; every
- * action is one loopback POST authorized by the status document's control
- * key.
+ * reset clock, and the quota-reset card (chooser dialog → consume the
+ * selected kind). All state comes from the plugin-owned routes; every action
+ * is one loopback POST authorized by the status document's control key.
+ * Visuals live in styles.ts on the host design tokens.
  *
  * @module dsh-zcode/client/ZcodeSection
  */
@@ -15,8 +15,9 @@ import {
 } from '../webui-protocol.ts'
 import {
   countdownText, fetchQuota, fetchReset, fiveHourLimit, QUOTA_POLL_MS, resetClockText, usedPercent, useReset,
+  type ResetKind,
 } from './quota.ts'
-import { ResetDialog } from './ResetDialog.tsx'
+import { ResetDialog, type ResetOption } from './ResetDialog.tsx'
 
 /** Locale translator. */
 type T = (key: string, params?: Record<string, string | number>) => string
@@ -25,80 +26,6 @@ export interface ZcodeSectionProps {
   t: T
   /** Shell-provided: close the settings panel. */
   close?: () => void
-}
-
-/* One visual language for the section: quiet surfaces, a single blue accent,
-   and traffic-light states on the usage bar. Neutral grays keep both themes
-   readable; text colors inherit. */
-const styles = {
-  section: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: '16px 18px',
-    border: '1px solid rgba(128,128,128,.22)',
-    borderRadius: 12,
-    background: 'rgba(128,128,128,.06)',
-  },
-  title: { margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: '.01em' },
-  intro: { margin: 0, fontSize: 13, opacity: .75, lineHeight: 1.6 },
-  row: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } as const,
-  primary: {
-    padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-    background: '#3b82f6', color: '#fff', fontSize: 13, fontWeight: 500,
-  },
-  outline: {
-    padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-    background: 'transparent', color: 'inherit', border: '1px solid rgba(128,128,128,.45)',
-  },
-  ghost: {
-    padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-    background: 'transparent', color: 'inherit', border: '1px solid rgba(128,128,128,.35)',
-  },
-  linkButton: {
-    padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500,
-    background: 'transparent', border: '1px solid rgba(128,128,128,.45)',
-    color: '#3b82f6', textDecoration: 'none',
-  },
-  muted: { margin: 0, fontSize: 12.5, opacity: .68 },
-  error: { margin: 0, fontSize: 13, color: '#e5484d', wordBreak: 'break-word', lineHeight: 1.5 },
-  mono: { fontSize: 12, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all', opacity: .8 },
-  factRow: { display: 'flex', gap: 8, fontSize: 13, alignItems: 'baseline' } as const,
-  badge: {
-    fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
-    border: '1px solid rgba(128,128,128,.45)', textTransform: 'uppercase', letterSpacing: '.06em',
-    opacity: .8,
-  },
-  heroRow: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 } as const,
-  heroValue: { fontSize: 26, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' } as const,
-  heroUnit: { fontSize: 13, opacity: .6, marginLeft: 2 },
-  heroSide: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 } as const,
-  heroClock: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-  bar: { height: 8, borderRadius: 999, background: 'rgba(128,128,128,.25)', overflow: 'hidden' } as const,
-  barFill: { height: '100%', borderRadius: 999, transition: 'width .3s ease' } as const,
-  metaRow: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, opacity: .65 } as const,
-  resetCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-    padding: '14px 18px',
-    border: '1px solid rgba(59,130,246,.35)',
-    borderLeft: '3px solid #3b82f6',
-    borderRadius: 12,
-    background: 'rgba(59,130,246,.06)',
-  },
-  notice: {
-    margin: 0, fontSize: 12.5, padding: '6px 10px', borderRadius: 8,
-    background: 'rgba(59,130,246,.1)', color: 'inherit',
-  },
-} as const
-
-/** Progress color by consumed share: calm blue, warning amber, critical red. */
-function usageColor(usedPercentValue: number): string {
-  if (usedPercentValue >= 85) return '#ef4444'
-  if (usedPercentValue >= 60) return '#f59e0b'
-  return '#3b82f6'
 }
 
 export function ZcodeSection({ t }: ZcodeSectionProps) {
@@ -189,51 +116,53 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
     : attempt?.phase === 'cancelled' ? t('cancelled') : undefined
 
   return (
-    <div style={styles.section}>
+    <div className="dsh-zcode-section">
       {account !== null
         ? (
-          <div style={styles.card}>
-            <div style={styles.heroRow}>
-              <h3 style={styles.title}>{t('title')}</h3>
-              <span style={styles.row}>
-                <span style={styles.mono}>{account.username ?? account.userId}</span>
-                <button type="button" style={styles.ghost} disabled={busy} onClick={signOut}>{t('signOut')}</button>
-              </span>
+          <section className="dsh-zcode-card">
+            <div className="dsh-zcode-head">
+              <h3 className="dsh-zcode-title">{t('accountTitle')}</h3>
+              <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-ghost" disabled={busy} onClick={signOut}>
+                {t('signOut')}
+              </button>
             </div>
-            <div style={styles.metaRow}>
-              <span>{t('userId')}: <span style={styles.mono}>{account.userId}</span></span>
+            <p className="dsh-zcode-name">{account.username ?? account.userId}</p>
+            <div className="dsh-zcode-facts">
+              <span>{t('userId')} <span className="dsh-zcode-mono">{account.userId}</span></span>
               <span>{t('signedAt')} {new Date(account.grantedAt).toLocaleString()}</span>
             </div>
-          </div>
+          </section>
         )
         : attempt?.phase === 'running' || attempt?.phase === 'succeeded'
           ? (
-            <div style={styles.card}>
-              <h3 style={styles.title}>{t('title')}</h3>
-              <p style={styles.muted}>{notice ?? t('signingIn')}</p>
+            <section className="dsh-zcode-card">
+              <h3 className="dsh-zcode-title">{t('accountTitle')}</h3>
+              <p className="dsh-zcode-muted">{notice ?? t('signingIn')}</p>
               {url === undefined ? null : (
                 <>
-                  <p style={styles.muted}>{t('needAction')}</p>
-                  <div style={styles.row}>
-                    <a style={styles.linkButton} href={url} target="_blank" rel="noreferrer">{t('openPage')}</a>
-                    <button type="button" style={styles.outline} onClick={() => { void copyLink(url) }}>
+                  <p className="dsh-zcode-hint">{t('needAction')}</p>
+                  <div className="dsh-zcode-row">
+                    <a className="dsh-zcode-link" href={url} target="_blank" rel="noreferrer">{t('openPage')}</a>
+                    <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-ghost" onClick={() => { void copyLink(url) }}>
                       {copyState === null ? t('copyLink') : copyState === 'copied' ? t('copied') : t('copyFailed')}
                     </button>
-                    <button type="button" style={styles.outline} disabled={busy} onClick={cancel}>{t('cancel')}</button>
+                    <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-outline" disabled={busy} onClick={cancel}>
+                      {t('cancel')}
+                    </button>
                   </div>
                 </>
               )}
-            </div>
+            </section>
           )
           : (
-            <div style={styles.card}>
-              <h3 style={styles.title}>{t('title')}</h3>
-              <p style={styles.intro}>{t('intro')}</p>
-              {terminalError === undefined ? null : <p style={styles.error}>{terminalError}</p>}
-              <div style={styles.row}>
+            <section className="dsh-zcode-card">
+              <h3 className="dsh-zcode-title">{t('accountTitle')}</h3>
+              <p className="dsh-zcode-muted">{t('intro')}</p>
+              {terminalError === undefined ? null : <p className="dsh-zcode-error">{terminalError}</p>}
+              <div className="dsh-zcode-row">
                 <button
                   type="button"
-                  style={attempt === null ? styles.primary : styles.outline}
+                  className="dsh-zcode-btn dsh-zcode-btn-primary"
                   // No status document yet means no control key; the button
                   // must not look clickable while it can do nothing.
                   disabled={busy || doc === null}
@@ -242,15 +171,18 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
                   {attempt === null ? t('signIn') : t('retry')}
                 </button>
               </div>
-            </div>
+            </section>
           )}
       {account !== null ? <QuotaCard t={t} generation={resetGeneration} /> : null}
-      {account !== null ? <ResetCard t={t} controlKey={doc?.controlKey} onUsed={() => { setResetGeneration(generation => generation + 1) }} /> : null}
+      {account !== null
+        ? <ResetCard t={t} controlKey={doc?.controlKey} onUsed={() => { setResetGeneration(generation => generation + 1) }} />
+        : null}
       {failure !== null
         ? (
-          <p style={styles.error}>
-            {t(failure === 'action' ? 'actionFailed' : 'loadFailed')}{' '}
-            <button type="button" style={styles.ghost} onClick={() => { void refresh() }}>
+          <p className="dsh-zcode-error">
+            {t(failure === 'action' ? 'actionFailed' : 'loadFailed')}
+            {' '}
+            <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-ghost" onClick={() => { void refresh() }}>
               {t('reload')}
             </button>
           </p>
@@ -263,12 +195,21 @@ export function ZcodeSection({ t }: ZcodeSectionProps) {
 /** The 5-hour quota card: remaining share as the hero figure, reset clock beside it. */
 function QuotaCard({ t, generation }: { t: T, generation: number }) {
   const [doc, setDoc] = useState<ZcodeQuotaDoc | undefined>()
+  const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async (force: boolean): Promise<void> => {
     setBusy(true)
     try {
-      setDoc(await fetchQuota(force))
+      // A transient fetch failure keeps the last good snapshot instead of
+      // collapsing back to the loading state.
+      const next = await fetchQuota(force)
+      if (next !== undefined) {
+        setDoc(next)
+        setFailed(false)
+      } else {
+        setFailed(true)
+      }
     } finally {
       setBusy(false)
     }
@@ -280,8 +221,7 @@ function QuotaCard({ t, generation }: { t: T, generation: number }) {
     return () => { clearInterval(timer) }
   }, [refresh])
 
-  // A consumed reset invalidates the host cache; read the fresh window now
-  // (the official client does the same through its quota-override pending).
+  // A consumed reset invalidates the host cache; read the fresh window now.
   useEffect(() => {
     if (generation > 0) void refresh(true)
   }, [generation, refresh])
@@ -293,64 +233,77 @@ function QuotaCard({ t, generation }: { t: T, generation: number }) {
 
   if (doc === undefined) {
     return (
-      <div style={styles.card}>
-        <div style={styles.metaRow}><span style={styles.title}>{t('quotaTitle')}</span></div>
-        <p style={styles.muted}>…</p>
-      </div>
+      <section className="dsh-zcode-card">
+        <div className="dsh-zcode-head">
+          <h3 className="dsh-zcode-title">{t('quotaTitle')}</h3>
+          <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-ghost" disabled={busy} onClick={() => { void refresh(true) }}>
+            {busy ? t('busy') : t('quotaRefresh')}
+          </button>
+        </div>
+        <p className={failed ? 'dsh-zcode-error' : 'dsh-zcode-loading'}>
+          {failed ? t('quotaUnavailable') : t('loading')}
+        </p>
+      </section>
     )
   }
   if (doc.status !== 'ok' || limit === undefined || percent === undefined || remaining === undefined) {
     return (
-      <div style={styles.card}>
-        <span style={styles.title}>{t('quotaTitle')}</span>
-        <p style={styles.error}>{doc.status === 'error' ? (doc.error ?? t('quotaUnavailable')) : t('quotaUnavailable')}</p>
-      </div>
+      <section className="dsh-zcode-card">
+        <div className="dsh-zcode-head"><h3 className="dsh-zcode-title">{t('quotaTitle')}</h3></div>
+        <p className="dsh-zcode-error">{doc.status === 'error' ? (doc.error ?? t('quotaUnavailable')) : t('quotaUnavailable')}</p>
+      </section>
     )
   }
 
+  // The fill carries the drain state; the hero figure stays primary-colored.
+  const state = percent >= 85 ? 'error' : percent >= 60 ? 'warn' : undefined
+
   return (
-    <div style={styles.card}>
-      <div style={styles.heroRow}>
-        <div style={styles.row}>
-          <span style={styles.title}>{t('quotaFiveHour')}</span>
-          {doc.level === undefined ? null : <span style={styles.badge}>{doc.level}</span>}
+    <section className="dsh-zcode-card">
+      <div className="dsh-zcode-head">
+        <div className="dsh-zcode-title-row">
+          <h3 className="dsh-zcode-title">{t('quotaTitle')}</h3>
+          {doc.level === undefined ? null : <span className="dsh-zcode-tag">{doc.level}</span>}
         </div>
-        <button type="button" style={styles.ghost} disabled={busy} onClick={() => { void refresh(true) }}>
-          {busy ? '…' : t('quotaRefresh')}
+        <button type="button" className="dsh-zcode-btn dsh-zcode-btn-sm dsh-zcode-btn-ghost" disabled={busy} onClick={() => { void refresh(true) }}>
+          {busy ? t('busy') : t('quotaRefresh')}
         </button>
       </div>
 
-      <div style={styles.heroRow}>
-        <div style={styles.row}>
-          <span style={{ ...styles.heroValue, color: usageColor(percent) }}>{remaining}</span>
-          <span style={styles.heroUnit}>%</span>
+      <div className="dsh-zcode-hero">
+        <div className="dsh-zcode-hero-value">
+          <span>{remaining}</span>
+          <span className="dsh-zcode-hero-unit">%</span>
         </div>
-        <div style={styles.heroSide}>
-          <span style={styles.muted}>{t('quotaResetsIn')}</span>
-          <span style={styles.heroClock}>{resetAt === undefined ? '—' : resetClockText(resetAt)}</span>
+        <div className="dsh-zcode-hero-side">
+          <span className="dsh-zcode-hint">{t('quotaResetsIn')}</span>
+          <span className="dsh-zcode-hero-clock">{resetAt === undefined ? '—' : resetClockText(resetAt)}</span>
         </div>
       </div>
 
-      <div style={styles.bar}>
-        <div style={{ ...styles.barFill, width: `${percent}%`, background: usageColor(percent) }} />
+      <div className="dsh-zcode-bar">
+        <div
+          className="dsh-zcode-bar-fill"
+          style={{ width: `${percent}%` }}
+          {...(state === undefined ? {} : { 'data-state': state })}
+        />
       </div>
 
-      <div style={styles.metaRow}>
+      <div className="dsh-zcode-meta">
         <span>{t('quotaUsed')} {percent}%</span>
-        <span>
-          {resetAt === undefined ? '' : `${t('quotaRemainingTime')} ${countdownText(resetAt)}`}
-        </span>
+        <span>{resetAt === undefined ? '' : `${t('quotaRemainingTime')} ${countdownText(resetAt)}`}</span>
       </div>
-    </div>
+    </section>
   )
 }
 
 /**
- * The quota-reset card: shows claimable five-hour resets, with a confirm
- * dialog before consuming one (the official client's reset card flow).
+ * The quota-reset card: shows claimable resets and opens the chooser dialog
+ * (every available kind as a selectable row) before consuming one.
  */
 function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undefined, onUsed: () => void }) {
   const [doc, setDoc] = useState<import('../webui-protocol.ts').ZcodeResetDoc | undefined>()
+  const [failed, setFailed] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   /** 'done' shows the success notice; 'failed' the failure text from the use result. */
@@ -358,7 +311,14 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
   const [resultError, setResultError] = useState<string | undefined>()
 
   const refresh = useCallback(async (): Promise<void> => {
-    setDoc(await fetchReset())
+    // A transient fetch failure keeps the last good snapshot.
+    const next = await fetchReset()
+    if (next !== undefined) {
+      setDoc(next)
+      setFailed(false)
+    } else {
+      setFailed(true)
+    }
   }, [])
 
   useEffect(() => {
@@ -367,13 +327,35 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
     return () => { clearInterval(timer) }
   }, [refresh])
 
-  const available = doc?.status === 'ok' ? (doc.fiveHourAvailable ?? 0) : 0
-  const expireAt = doc?.fiveHourEarliestExpireAt
+  /** Total claimable opportunities across kinds, for the header count. */
+  const available = doc?.status === 'ok'
+    ? (doc.fiveHourAvailable ?? 0) + (doc.weekAvailable ?? 0)
+    : 0
 
-  const confirm = useCallback(async (): Promise<void> => {
+  /** The kinds with at least one claimable opportunity, in display order. */
+  const options: ResetOption[] = doc?.status === 'ok'
+    ? [
+      ...(doc.fiveHourAvailable
+        ? [{
+          kind: 'FIVE_HOUR' as const,
+          count: doc.fiveHourAvailable,
+          ...(doc.fiveHourEarliestExpireAt !== undefined ? { earliestExpireAt: doc.fiveHourEarliestExpireAt } : {}),
+        }]
+        : []),
+      ...(doc.weekAvailable
+        ? [{
+          kind: 'WEEK' as const,
+          count: doc.weekAvailable,
+          ...(doc.weekEarliestExpireAt !== undefined ? { earliestExpireAt: doc.weekEarliestExpireAt } : {}),
+        }]
+        : []),
+    ]
+    : []
+
+  const confirm = useCallback(async (kind: ResetKind): Promise<void> => {
     setBusy(true)
     try {
-      const used = await useReset(controlKey)
+      const used = await useReset(controlKey, kind)
       if (used !== undefined && used.status === 'ok' && used.used === true) {
         setResult('done')
         setResultError(undefined)
@@ -391,28 +373,34 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
   }, [controlKey, onUsed, refresh])
 
   return (
-    <div style={styles.resetCard}>
-      <div style={styles.metaRow}>
-        <span style={styles.title}>{t('resetTitle')}</span>
+    <section className="dsh-zcode-card">
+      <div className="dsh-zcode-head">
+        <h3 className="dsh-zcode-title">{t('resetTitle')}</h3>
         {doc !== undefined && doc.status === 'ok' && available > 0
-          ? <span style={styles.muted}>{t('resetCount', { count: available })}</span>
+          ? <span className="dsh-zcode-hint">{t('resetCount', { count: available })}</span>
           : null}
       </div>
 
       {doc === undefined
-        ? <p style={styles.muted}>…</p>
+        ? <p className={failed ? 'dsh-zcode-error' : 'dsh-zcode-loading'}>
+          {failed ? t('resetUnavailable') : t('loading')}
+        </p>
         : doc.status !== 'ok'
-          ? <p style={styles.error}>{doc.status === 'error' ? (doc.error ?? t('resetUnavailable')) : t('resetUnavailable')}</p>
-          : available === 0
-            ? <p style={styles.muted}>{t('resetNone')}</p>
+          ? <p className="dsh-zcode-error">{doc.status === 'error' ? (doc.error ?? t('resetUnavailable')) : t('resetUnavailable')}</p>
+          : options.length === 0
+            ? <p className="dsh-zcode-hint">{t('resetNone')}</p>
             : (
               <>
-                <p style={styles.muted}>
-                  {t('resetHint')}
-                  {expireAt === undefined ? '' : ` ${t('resetExpire', { time: resetClockText(expireAt) })}`}
-                </p>
-                <div style={styles.row}>
-                  <button type="button" style={styles.primary} disabled={busy} onClick={() => { setResult(null); setConfirming(true) }}>
+                <p className="dsh-zcode-hint">{t('resetHint')}</p>
+                <div className="dsh-zcode-row">
+                  <button
+                    type="button"
+                    className="dsh-zcode-btn dsh-zcode-btn-outline"
+                    // No control key yet means the write can do nothing; the
+                    // button must not look clickable while it cannot act.
+                    disabled={busy || controlKey === undefined}
+                    onClick={() => { setResult(null); setConfirming(true) }}
+                  >
                     {t('resetButton')}
                   </button>
                 </div>
@@ -420,22 +408,26 @@ function ResetCard({ t, controlKey, onUsed }: { t: T, controlKey: string | undef
               )}
 
       {result === 'done'
-        ? <p style={styles.notice}>{t('resetDone')}</p>
+        ? <p className="dsh-zcode-notice" role="status">{t('resetDone')}</p>
         : result === 'failed'
-          ? <p style={styles.error}>{t('resetFailed')}{resultError === undefined ? '' : `：${resultError}`}</p>
+          ? (
+            <p className="dsh-zcode-error" role="status">
+              {t('resetFailed')}{resultError === undefined ? null : ` — ${resultError}`}
+            </p>
+          )
           : null}
 
-      {confirming
+      {confirming && options.length > 0
         ? (
           <ResetDialog
             t={t}
+            options={options}
             busy={busy}
-            detail={expireAt === undefined ? undefined : t('resetExpire', { time: resetClockText(expireAt) })}
-            onConfirm={() => { void confirm() }}
+            onConfirm={kind => { void confirm(kind) }}
             onCancel={() => { setConfirming(false) }}
           />
         )
         : null}
-    </div>
+    </section>
   )
 }

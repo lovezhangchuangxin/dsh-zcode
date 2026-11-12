@@ -28,7 +28,7 @@ function osCategory(platform: NodeJS.Platform): 'macos' | 'windows' | 'linux' {
 }
 
 export function buildZcodeSourceHeaders(options: ZcodeSourceHeaderOptions): Record<string, string> {
-  const appVersion = printable(options.appVersion) ?? '3.15.1'
+  const appVersion = printable(options.appVersion) ?? '3.18.0'
   const platform = process.platform
   const arch = process.arch
   const locale = printable(Intl.DateTimeFormat().resolvedOptions().locale) ?? 'unknown'

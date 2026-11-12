@@ -39,13 +39,17 @@ export async function fetchReset(): Promise<ZcodeResetDoc | undefined> {
   }
 }
 
-/** Consume one five-hour reset; undefined when the call failed outright. */
-export async function useReset(controlKey: string | undefined): Promise<ZcodeResetUseDoc | undefined> {
+/** Which window a reset reopens. */
+export type ResetKind = 'FIVE_HOUR' | 'WEEK'
+
+/** Consume one reset of the chosen kind; undefined when the call failed outright. */
+export async function useReset(controlKey: string | undefined, kind: ResetKind): Promise<ZcodeResetUseDoc | undefined> {
   if (controlKey === undefined) return undefined
   try {
     const res = await fetch(ZCODE_UI_RESET_USE_PATH, {
       method: 'POST',
-      headers: { [ZCODE_UI_CONTROL_HEADER]: controlKey },
+      headers: { [ZCODE_UI_CONTROL_HEADER]: controlKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: kind }),
     })
     const parsed: unknown = await res.json().catch(() => null)
     if (!res.ok || !isZcodeResetUseDoc(parsed)) return undefined

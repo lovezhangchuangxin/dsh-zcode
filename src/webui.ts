@@ -118,8 +118,25 @@ export interface ZcodeWebUiDeps {
   readQuota: (force: boolean) => Promise<ZcodeQuotaDoc>
   /** Reset-availability snapshot, never throws. */
   readResetStatus: () => Promise<ZcodeResetDoc>
-  /** Consume one five-hour reset; success also invalidates the quota cache. */
-  useReset: () => Promise<ZcodeResetUseDoc>
+  /** Consume one reset of the chosen kind; success also invalidates the quota cache. */
+  useReset: (kind: 'FIVE_HOUR' | 'WEEK') => Promise<ZcodeResetUseDoc>
+}
+
+/** Read one small JSON body; a missing or unreadable body answers undefined. */
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length
+    if (size > 4096) return undefined
+    chunks.push(chunk as Buffer)
+  }
+  if (chunks.length === 0) return undefined
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -280,10 +297,19 @@ export function registerZcodeWebUi(ctx: Context, deps: ZcodeWebUiDeps): void {
         json(res, 200, await deps.readResetStatus())
       }
 
-      /** Control-keyed write: consume one five-hour reset. */
+      /** Control-keyed write: consume one reset; the body names the kind. */
       const handleResetUse = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
         if (!guardWrite(req, res)) return
-        json(res, 200, await deps.useReset())
+        const body = await readJsonBody(req)
+        const raw = typeof body === 'object' && body !== null ? (body as { type?: unknown }).type : undefined
+        // This write consumes a real opportunity; an explicit unknown type is
+        // a caller bug and must not silently fall back to a default kind.
+        if (raw !== undefined && raw !== 'FIVE_HOUR' && raw !== 'WEEK') {
+          json(res, 400, { error: 'unknown reset type' })
+          return
+        }
+        const kind = raw === 'WEEK' ? 'WEEK' : 'FIVE_HOUR'
+        json(res, 200, await deps.useReset(kind))
       }
 
       /** Wrap one handler so an internal failure answers 500 instead of leaving an unhandled rejection. */

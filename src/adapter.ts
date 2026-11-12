@@ -9,10 +9,12 @@
  */
 
 import { LlmAdapter, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, Message, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { BuiltinLlmFailureCode, GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, Message, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 import { BigModelPatClient, fingerprintOf } from './bigmodel-pat.ts'
 import { PatError } from './types.ts'
 import { GLM_REASONING_EFFORTS, type GlmModelEntry } from './models.ts'
+import { PER_IMAGE_MAX_BYTES, prepareImages, type AttachmentStoreLike, type ImageAccess } from './images.ts'
 import { serialize, type ReplaySignatures } from './serialize.ts'
 import { parseSse } from './sse.ts'
 import { translate } from './translate.ts'
@@ -28,6 +30,14 @@ export interface ZcodeAdapterOptions {
   streamIdleTimeoutMs: number
   /** Read the stored sign-in grant; resolves undefined when signed out. */
   loadGrant: () => Promise<{ accessToken: string; userId: string } | undefined>
+  /** The attachment service, read lazily once per image-bearing request. */
+  resolveAttachments?: () => AttachmentStoreLike | undefined
+  /**
+   * Bridge one attachment's host path into the tool execution world, for the
+   * model-visible handle texts (the offload placeholder names the read-only
+   * copy so the model can open it instead of asking the user again).
+   */
+  resolveImageAccess?: (attachments: AttachmentStoreLike, ref: ImageAttachmentRef) => ImageAccess | undefined
   /** Client identity headers mirroring the official ZCode app. */
   sourceHeaders: Record<string, string>
   /**
@@ -38,6 +48,11 @@ export interface ZcodeAdapterOptions {
   resolveDeviceMid?: () => Promise<string | undefined>
   /** Client version reported at PAT issuance. */
   clientVersion: string
+}
+
+/** Input modalities for one catalog entry; vision models accept images. */
+function modalitiesOf(entry: GlmModelEntry): ['text'] | ['text', 'image'] {
+  return entry.vision === true ? ['text', 'image'] : ['text']
 }
 
 export class ZcodeGlmAdapter extends LlmAdapter {
@@ -51,13 +66,23 @@ export class ZcodeGlmAdapter extends LlmAdapter {
     return { id: provider, name: this.options.providerName }
   }
 
+  /**
+   * Images ride inline base64, so each occurrence is capped such that its
+   * base64 stays under the 5 MB-per-image wire convention; targets above the
+   * already-normalized source keep the source untouched. Serialization reads
+   * through this same target, keeping the request bytes and this promise one.
+   */
+  override imageRequestTarget(_provider: string, _model: string, image: ImageAttachmentRef): ImageRequestTarget {
+    return { width: image.width, height: image.height, maxBytes: PER_IMAGE_MAX_BYTES }
+  }
+
   override async listModels(provider: string): Promise<LlmModelInfo[]> {
     return this.options.models.map(model => ({
       provider,
       id: model.id,
       name: model.name,
       ...(model.description ? { description: model.description } : {}),
-      inputModalities: ['text' as const],
+      inputModalities: modalitiesOf(model),
     }))
   }
 
@@ -71,7 +96,7 @@ export class ZcodeGlmAdapter extends LlmAdapter {
       id: entry.id,
       name: entry.name,
       ...(entry.description ? { description: entry.description } : {}),
-      inputModalities: ['text' as const],
+      inputModalities: modalitiesOf(entry),
       context: { contextWindow: entry.contextWindow },
       defaultMaxTokens: entry.maxTokens,
       ...(entry.thinking
@@ -126,15 +151,31 @@ export class ZcodeGlmAdapter extends LlmAdapter {
     }
     const fingerprint = fingerprintOf(material.token)
 
-    const replayByMessage = collectReplay(options.messages, options.model)
+    // Image-bearing requests resolve durable attachments to inline bytes
+    // before serialization; text-only histories pass through untouched.
+    const attachments = this.options.resolveAttachments?.()
+    const resolveAccess = attachments === undefined
+      ? undefined
+      : (ref: ImageAttachmentRef) => this.options.resolveImageAccess?.(attachments, ref)
+    const { messages, versions } = await prepareImages({
+      history: options.messages,
+      supportsVision: this.options.models.find(entry => entry.id === options.model)?.vision === true,
+      attachments,
+      resolveTarget: ref => this.imageRequestTarget(options.provider, options.model, ref),
+      resolveAccess,
+      signal: options.signal,
+    })
+    const replayByMessage = collectReplay(messages, options.model)
     const body = serialize(
-      options,
+      { ...options, messages: [...messages] },
       {
         models: this.options.models,
         defaultMaxTokens: this.options.defaultMaxTokens,
         defaultEffort: this.options.defaultEffort,
       },
       replayByMessage,
+      versions,
+      resolveAccess,
     )
 
     let response: Response
@@ -162,7 +203,8 @@ export class ZcodeGlmAdapter extends LlmAdapter {
       throw new LlmError('zcode-glm: Messages endpoint unreachable', 'TRANSPORT', { cause: error })
     }
     if (!response.ok) {
-      const text = await response.text()
+      // Bounded read: a verbose gateway body must not balloon the error text.
+      const text = (await response.text()).slice(0, 2048)
       if (response.status === 401 || response.status === 403) {
         // Reject only this PAT generation; a late 401 must not kill a fresh one.
         this.pat.reject(fingerprint)
@@ -170,7 +212,14 @@ export class ZcodeGlmAdapter extends LlmAdapter {
       throw new LlmError(
         providerFailureMessage(text, response.status),
         providerFailureCode(response.status),
-        { status: response.status, cause: new Error(text) },
+        {
+          status: response.status,
+          ...(() => {
+            const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'))
+            return retryAfterMs === undefined ? {} : { providerRetryAfterMs: retryAfterMs }
+          })(),
+          cause: new Error(text),
+        },
       )
     }
     if (response.body === null) throw new LlmError('zcode-glm: no response body', 'EMPTY_RESPONSE')
@@ -209,7 +258,9 @@ export class ZcodeGlmAdapter extends LlmAdapter {
  * Recover replay signatures indexed by assistant message identity. Thinking
  * signatures are not portable across models: a history block keeps its
  * signature only when the stored replay was produced by the model this
- * request targets (same rule as the reference DeepSeek adapter).
+ * request targets (same rule as the reference DeepSeek adapter). The stored
+ * block list is dense (null where unsigned); anything else forfeits replay
+ * for that turn rather than misaligning signatures.
  */
 function collectReplay(
   messages: readonly { role: string }[], model: string,
@@ -224,8 +275,9 @@ function collectReplay(
     if (!Array.isArray(blocks)) continue
     const replayModel = source?.replayState?.response?.model ?? source?.model
     if (replayModel !== undefined && replayModel !== model) continue
-    const signatures = blocks.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-    if (signatures.length > 0) map.set(message as Message, { signatures })
+    if (!blocks.every(entry => entry === null || (typeof entry === 'string' && entry.length > 0))) continue
+    const signatures = blocks as (string | null)[]
+    if (signatures.some(entry => entry !== null)) map.set(message as Message, { signatures })
   }
   return map
 }
@@ -243,9 +295,23 @@ function providerFailureMessage(text: string, status: number): string {
   return `zcode-glm: provider request failed (HTTP ${status})`
 }
 
-function providerFailureCode(status: number): string {
+function providerFailureCode(status: number): BuiltinLlmFailureCode {
   if (status === 401 || status === 403) return 'MISSING_CREDENTIAL'
-  if (status === 429) return 'RATE_LIMITED'
-  if (status >= 500) return 'PROVIDER_ERROR'
-  return 'INVALID_REQUEST'
+  if (status === 429) return 'RATE_LIMIT'
+  if (status >= 500) return 'SERVER'
+  return `HTTP_${status}`
+}
+
+/** `retry-after` as delay-ms; accepts delay-seconds or HTTP-date, ignores zero/negative. */
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (value === null || value === '') return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) {
+    const ms = Math.round(seconds * 1000)
+    return ms > 0 ? ms : undefined
+  }
+  const at = Date.parse(value)
+  if (Number.isNaN(at)) return undefined
+  const ms = at - Date.now()
+  return ms > 0 ? ms : undefined
 }

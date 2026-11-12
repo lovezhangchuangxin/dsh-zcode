@@ -1,10 +1,14 @@
 /**
  * Serialize harness-neutral requests into the GLM Anthropic Messages wire
- * format. Tool history replays native thinking signatures when present.
+ * format. Tool history replays native thinking signatures when present;
+ * image occurrences become a model-visible handle text block plus an inline
+ * base64 image block (the endpoint has no file-reference form).
  */
 
-import { LlmError } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, Message, RequestMessage } from '@deepseek-ai/dsh-llm'
+import { LlmError, requestImageHandleText } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, Message, RequestMessage } from '@deepseek-ai/dsh-llm'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { ImageAccess, RequestImageVersions } from './images.ts'
 import type { GlmModelEntry } from './models.ts'
 
 export interface WireBlock { type: string; [field: string]: unknown }
@@ -34,10 +38,15 @@ const WIRE_EFFORTS: Record<string, string> = {
   max: 'max',
 }
 
-/** Signatures recovered from a previous response, keyed by assistant turn + block index. */
+/** Signatures recovered from a previous response, keyed by assistant turn. */
 export interface ReplaySignatures {
-  /** One entry per emitted reasoning block, in finish order. */
-  signatures: string[]
+  /**
+   * One entry per content block in the finish-time replayState order — dense,
+   * `null` where that block carried no signature. Indexing by overall block
+   * position (not by reasoning-block count) keeps a missing signature on an
+   * earlier thinking block from shifting later signatures onto wrong blocks.
+   */
+  signatures: readonly (string | null)[]
 }
 
 function unsupported(type: string): never {
@@ -70,6 +79,8 @@ export function serialize(
     thinkingDisabled?: boolean
   },
   replayByMessage?: ReadonlyMap<Message, ReplaySignatures>,
+  images?: RequestImageVersions,
+  resolveAccess?: (ref: ImageAttachmentRef) => ImageAccess | undefined,
 ): WireRequest {
   const model = defaults.models.find(entry => entry.id === options.model)
   const messages: WireMessage[] = []
@@ -112,17 +123,22 @@ export function serialize(
         ? [{
             type: 'tool_result',
             tool_use_id: message.toolCallId,
-            content: message.content.flatMap(block =>
-              block.type === 'text' && block.text ? [{ type: 'text', text: block.text }] : [],
-            ),
+            content: message.content.flatMap(block => {
+              if (block.type === 'text') return block.text ? [{ type: 'text', text: block.text }] : []
+              if (block.type === 'image') return imageBlocks(block, images, resolveAccess)
+              return []
+            }),
             ...(message.isError === undefined ? {} : { is_error: message.isError }),
           }]
         : message.content.flatMap(block => {
             if (block.type === 'text') {
               return block.text ? [{ type: 'text', text: block.text }] : []
             }
-            if (block.type === 'file' || block.type === 'image') {
-              return unsupported(`user content ${block.type} (text-only route)`)
+            if (block.type === 'image') {
+              return imageBlocks(block, images, resolveAccess)
+            }
+            if (block.type === 'file') {
+              return unsupported('user content file (files travel as handle text; attach images instead)')
             }
             return []
           })
@@ -175,21 +191,44 @@ export function serialize(
   }
 }
 
+/**
+ * One image occurrence → the model-visible handle text plus the inline base64
+ * block, matching the reference adapters' pairing.
+ */
+function imageBlocks(
+  block: Extract<ContentBlock, { type: 'image' }>,
+  images: RequestImageVersions | undefined,
+  resolveAccess?: (ref: ImageAttachmentRef) => ImageAccess | undefined,
+): WireBlock[] {
+  const version = images?.get(block.attachment.attachmentId)
+  if (version === undefined) throw new LlmError('zcode-glm: request image is missing', 'INVALID_REQUEST')
+  return [
+    {
+      type: 'text',
+      text: requestImageHandleText(block.attachment, version, resolveAccess?.(block.attachment)),
+    },
+    {
+      type: 'image',
+      source: { type: 'base64', media_type: version.mediaType, data: Buffer.from(version.data).toString('base64') },
+    },
+  ]
+}
+
 function assistantBlocks(
   message: Message, model: string, replay?: ReplaySignatures,
 ): WireBlock[] {
-  let reasoningIndex = -1
+  let blockIndex = -1
   return message.content.flatMap((block): WireBlock[] => {
+    blockIndex += 1
     switch (block.type) {
       case 'text':
         return block.text.length === 0 ? [] : [{ type: 'text', text: block.text }]
       case 'reasoning': {
-        reasoningIndex += 1
-        const signature = replay?.signatures[reasoningIndex]
+        const signature = replay?.signatures[blockIndex]
         return [{
           type: 'thinking',
           thinking: block.text,
-          ...(signature ? { signature } : {}),
+          ...(typeof signature === 'string' && signature ? { signature } : {}),
         }]
       }
       case 'tool-call':

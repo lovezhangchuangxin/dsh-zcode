@@ -10,6 +10,8 @@ export interface GlmModelEntry {
   maxTokens: number
   /** Whether the model supports toggling thinking on and off. */
   thinking: boolean
+  /** Whether the model accepts image input (native multimodal, e.g. GLM-5.3-Flash). */
+  vision?: boolean
 }
 
 /** Reasoning efforts in ascending order, per the harness vocabulary. */
@@ -44,6 +46,15 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     maxTokens: 128_000,
     thinking: true,
   },
+  {
+    id: 'GLM-5.3-Flash',
+    name: 'GLM-5.3-Flash',
+    description: 'Native multimodal GLM model — images welcome.',
+    contextWindow: 1_048_576,
+    maxTokens: 128_000,
+    thinking: true,
+    vision: true,
+  },
 ]
 
 /** Parse user-supplied model rows from config; fall back to the shipped catalog. */
@@ -64,6 +75,7 @@ export function resolveModels(raw: unknown): readonly GlmModelEntry[] {
       contextWindow,
       maxTokens: Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : 128_000,
       thinking: fields.thinking !== false,
+      ...(fields.vision === true ? { vision: true } : {}),
     })
   }
   return parsed.length > 0 ? parsed : DEFAULT_MODELS

@@ -126,9 +126,12 @@ export async function* translate(
     }
     if (event.type === 'error') {
       const fields = object(event.error)
+      // A provider stream error's own code is free-form; the neutral SERVER
+      // bucket carries it while the message keeps the provider's wording.
+      const providerCode = typeof fields.code === 'string' && fields.code.trim() !== '' ? ` [${fields.code.trim()}]` : ''
       throw new LlmError(
-        `zcode-glm: ${string(fields.message ?? 'provider stream error')}`,
-        typeof fields.code === 'string' ? fields.code.toUpperCase() : 'PROVIDER_ERROR',
+        `zcode-glm: ${string(fields.message ?? 'provider stream error')}${providerCode}`,
+        'SERVER',
       )
     }
     if (!['content_block_start', 'content_block_delta', 'content_block_stop', 'message_delta', 'message_stop'].includes(String(event.type))) {
