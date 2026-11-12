@@ -29,7 +29,7 @@
 
 ### 登录入口（为什么自带设置页）
 
-dsh 宿主没有通用的「列出所有 authorization flow」界面——内置账号页只接 DeepSeek 平台流程，所以插件自带 UI：宿主侧在 host web server 上挂 5 条仅限回环地址的插件路由（`/plugins/dsh-zcode/status|signin|cancel|signout|quota`，写操作需状态文档下发的进程内 control key，`quota` 走官方同款 `GET /api/monitor/usage/quota/limit` 并带 60 秒缓存），浏览器侧是一个 `d.client` 模块（`lib/client.js`，ModuleLoader 封套），在 Settings 面板注册设置页、在对话输入栏右侧注册额度徽章。两侧共享 `src/webui-protocol.ts` 的线上契约。
+dsh 宿主没有通用的「列出所有 authorization flow」界面——内置账号页只接 DeepSeek 平台流程，所以插件自带 UI：宿主侧在 host web server 上挂 7 条仅限回环地址的插件路由（`/plugins/dsh-zcode/status|signin|cancel|signout|quota|reset|reset/use`，写操作需状态文档下发的进程内 control key，`quota` 走官方同款 `GET /api/monitor/usage/quota/limit` 并带 60 秒缓存），浏览器侧是一个 `d.client` 模块（`lib/client.js`，ModuleLoader 封套），在 Settings 面板注册设置页、在对话输入栏右侧注册额度徽章。两侧共享 `src/webui-protocol.ts` 的线上契约。
 
 ### 宿主模块绑定（为什么有 `lib/boot.js`）
 
@@ -41,31 +41,44 @@ dsh 发布版 CLI 把全部 `@deepseek-ai/*` 包放在 CLI 私有的 `node_modul
 
 ## 安装
 
+前置：一个能跑的 dsh。没有的话先装（Node ≥ 22.15）：
+
 ```sh
-cd dsh-zcode
+npm install -g @deepseek-ai/dsh
+dsh web          # Web 形态；首次运行创建 profile（Web 形态在 ~/.dsh/profiles/web）
+```
+
+然后按插件来源三选一。**① 从源码**（本地开发或 git 克隆）：
+
+```sh
+git clone https://github.com/lovezhangchuangxin/dsh-zcode && cd dsh-zcode
 pnpm install
-pnpm build        # 产出 lib/boot.js + lib/plugin.js（宿主半体）与 lib/client.js（浏览器半体）
+pnpm build       # 产出 lib/：boot.js + plugin.js（宿主半体）与 client.js（浏览器半体）
+pnpm --dir ~/.dsh/profiles/<name> add link:<本仓库绝对路径>
 ```
 
-接入 dsh profile——Web 端 Plugins 页面安装，或直接在 profile 目录执行：
+**② tarball**（分发给别人）：
 
 ```sh
-pnpm --dir ~/.dsh/profiles/<name> add link:/Users/you/path/to/dsh-zcode
+pnpm pack                                                # 产出 dsh-zcode-<version>.tgz（只含 lib/、cordis.patch.yml 与元数据，自包含）
+pnpm --dir ~/.dsh/profiles/<name> add /path/to/dsh-zcode-<version>.tgz
 ```
 
-然后在 profile 的 `cordis.patch.yml` 中确认条目（安装 bundle 时自动添加）：
+**③ npm**（`npm publish` 之后）：在 dsh Web 端 Settings → **Plugins** 页面搜索安装（支持官方源 / npmmirror / 自定义 registry / git 来源），patch 条目自动写入。
+
+方式 ①② 需在 profile 的 `cordis.patch.yml` 手动确认条目（方式 ③ 自动添加）：
 
 ```yaml
 - id: dsh-zcode
   name: dsh-zcode
 ```
 
-> 修改插件代码后需重启 dsh 进程——运行中的进程缓存了模块。
+最后**重启 dsh 进程**——运行中的进程缓存了模块（方式 ① 改完代码重新 `pnpm build` 后同样要重启）。
 
 ## 使用
 
 1. **登录**：Settings → **ZCode (BigModel)** → 「使用 BigModel 账号登录」。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）；页面轮询状态直到登录成功。
-2. **选模型**：Settings → Models 里出现 **ZCode GLM (Coding Plan)** 路由（无需 API key）。模型选择器中选择 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo` / `GLM-5.3-Flash`（后者支持图片）。
+2. **选模型**：模型选择器中选 `GLM-5.3` / `GLM-5.2` / `GLM-5-Turbo` / `GLM-5.3-Flash`（后者支持图片）。**模型列表出现「ZCode GLM」分组即说明插件加载成功**；选中后对话底栏会出现额度徽章。
 
 ## 配置（cordis.patch.yml 的 `config:` 段）
 
