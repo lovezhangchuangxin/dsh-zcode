@@ -71,7 +71,7 @@ pnpm --dir ~/.dsh/profiles/<name> add /path/to/dsh-zcode-<version>.tgz
 ## 使用
 
 1. **登录**：Settings → **ZCode (BigModel)** → 「使用 BigModel 账号登录」。浏览器打开 bigmodel.cn 授权页，确认后插件自动完成（无需本地回调）；页面轮询状态直到登录成功。
-2. **选模型**：模型选择器中选 `GLM-5.3` / `GLM-5.3-Flash` / `GLM-5V-Turbo` / `GLM-5.2` / `GLM-5-Turbo`（Flash 与 V-Turbo 支持图片）。**模型列表出现「ZCode GLM」分组即说明插件加载成功**；选中后对话底栏会出现额度徽章。
+2. **选模型**：模型选择器中选 `GLM-5.4` / `GLM-5.3` / `GLM-5.3-Flash`（GLM-5.4 与 Flash 支持图片）。**模型列表出现「ZCode GLM」分组即说明插件加载成功**；选中后对话底栏会出现额度徽章。
 
 ## 配置（cordis.patch.yml 的 `config:` 段）
 
@@ -80,7 +80,7 @@ pnpm --dir ~/.dsh/profiles/<name> add /path/to/dsh-zcode-<version>.tgz
 | `baseURL` | `https://open.bigmodel.cn/api/anthropic/v1` | 推理端点（Anthropic 惯例：base 含 `/v1`，adapter 追加 `/messages`） |
 | `appVersion` | `3.18.0` | 来源头与 PAT 签发上报的客户端版本 |
 | `deviceMid` | 空（自动生成） | 稳定设备号。留空时插件首次启动生成 UUID 并持久化到 dsh 凭据库（`dsh-zcode/device` 记录，跨重启、跨登出保持）；配置显式值时优先生效 |
-| `models` | GLM-5.3 / GLM-5.3-Flash / GLM-5V-Turbo / GLM-5.2 / GLM-5-Turbo | 模型目录，顺序与官方客户端一致（id/name/contextWindow/maxTokens/thinking/vision）。`vision: true` 的模型接受图片输入（内联 base64，单图目标 ≤3.5 MiB，整请求 base64 预算 16 MiB / 10 张，超出走宿主 offload） |
+| `models` | GLM-5.4 / GLM-5.3 / GLM-5.3-Flash | 模型目录，与官方客户端 Coding Plan 的默认列表及顺序一致（id/name/contextWindow/maxTokens/thinking/vision）；需要其他模型（如 GLM-5.2、GLM-5-Turbo）时在此追加条目。`vision: true` 的模型接受图片输入（内联 base64，单图目标 ≤3.5 MiB，整请求 base64 预算 16 MiB / 10 张，超出走宿主 offload） |
 | `defaultEffort` | `high` | 思考强度：off / low / medium / high（以 `output_config.effort` 直传服务端，与官方客户端一致；旧配置里的 `minimal` 会按 `low` 发送） |
 | `defaultMaxTokens` | `128000` | 默认输出上限（与官方客户端一致） |
 | `streamIdleTimeoutMs` | `120000` | 流式空闲超时（毫秒） |

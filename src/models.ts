@@ -22,9 +22,18 @@ export const GLM_REASONING_EFFORTS: readonly { id: ReturnType<typeof ReasoningEf
   { id: ReasoningEffortId('high'), name: 'High' },
 ]
 
-// Order mirrors the official client's catalog: current generation first
-// (flagship, flash, V-turbo), then older generations by recency.
+// Order mirrors the official client's Coding Plan listing; models it does
+// not list by default (e.g. GLM-5.2, GLM-5-Turbo) go through `models` config.
 export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
+  {
+    id: 'GLM-5.4',
+    name: 'GLM-5.4',
+    description: 'Latest flagship GLM reasoning model — images welcome.',
+    contextWindow: 1_048_576,
+    maxTokens: 128_000,
+    thinking: true,
+    vision: true,
+  },
   {
     id: 'GLM-5.3',
     name: 'GLM-5.3',
@@ -41,30 +50,6 @@ export const DEFAULT_MODELS: readonly GlmModelEntry[] = [
     maxTokens: 128_000,
     thinking: true,
     vision: true,
-  },
-  {
-    id: 'GLM-5V-Turbo',
-    name: 'GLM-5V-Turbo',
-    description: 'Multimodal coding model with image input.',
-    contextWindow: 200_000,
-    maxTokens: 128_000,
-    thinking: true,
-    vision: true,
-  },
-  {
-    id: 'GLM-5.2',
-    name: 'GLM-5.2',
-    contextWindow: 1_048_576,
-    maxTokens: 128_000,
-    thinking: true,
-  },
-  {
-    id: 'GLM-5-Turbo',
-    name: 'GLM-5-Turbo',
-    description: 'Fast long-context GLM model.',
-    contextWindow: 2_000_000,
-    maxTokens: 128_000,
-    thinking: true,
   },
 ]
 
